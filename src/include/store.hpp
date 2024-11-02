@@ -50,7 +50,7 @@ struct Store {
 
 	ValueMap v;
 
-	HashKey convert_to_hash(const UserKey &u) {
+/*	HashKey convert_to_hash(const UserKey &u) {
 		// ...
 	}
 
@@ -76,7 +76,7 @@ struct Store {
 
 	Status bulk_update(BulkStore) {
 
-	}
+	}*/
 };
 
 };
