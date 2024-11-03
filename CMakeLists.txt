@@ -28,6 +28,7 @@ set(LIBSRC
 
 add_library(gem ${LIBSRC})
 
+
 # Compile the client and the server to an executable
 add_executable("server" "${SRC_ROOT}/server.cpp")
 target_link_libraries("server" gem)

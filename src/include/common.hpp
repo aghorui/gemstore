@@ -2,6 +2,7 @@
 #define COMMON_HPP
 
 #include "json.hpp"
+#include "httplib.h"
 #include <map>
 #include <queue>
 #include <string>
@@ -18,6 +19,12 @@ using Queue = std::queue<T>;
 
 template <typename K, typename V>
 using Map = std::map<K, V>;
+
+template <typename T>
+using Set = std::set<T>;
+
+template <typename T>
+using Vector = std::vector<T>;
 
 bool validate_json(String json_str);
 

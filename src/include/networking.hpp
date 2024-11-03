@@ -7,25 +7,127 @@
 
 #include <cstdint>
 #include <queue>
+#include <cstdlib>
 #include <pthread.h>
+#include <unistd.h>
+#include <sys/epoll.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include "common.hpp"
 #include "store.hpp"
 
+
 namespace gem {
 
-struct ServerRequest {
-	enum RequestCreatorType {
+struct PeerInformation {
+	String sender_address;
+	uint16_t sender_port;
+};
+
+struct Connection {
+	enum ConnectionType {
 		PEER,
 		CLIENT
 	};
 
+	ConnectionType connection_type;
 	String sender_address;
 	uint16_t sender_port;
 
+	int fd;
+
+	void close() {
+		::close(fd);
+	}
 };
 
+struct Request {
+	enum RequestType {
+		READ,
+		WRITE
+	};
+
+	RequestType request_type;
+	Connection &requester;
+};
+
+struct Server;
+
 struct Server {
+
+	template<typename ContextT, void (*thread_func)(ContextT &)>
+	static void *worker_thread_func(void *arg) {
+		ContextT *context = (ContextT *) arg;
+		thread_func(context);
+		return NULL;
+	}
+
+	template<typename ContextT, void (*thread_func)(ContextT &)>
+	struct WorkerThread {
+		pthread_t thread;
+		ContextT context;
+
+		void start() {
+			pthread_create(&thread, NULL,
+				worker_thread_func<ContextT, thread_func>,
+				&context);
+		}
+
+		void stop() {
+			context.done = true;
+			pthread_join(thread, NULL);
+		}
+
+		WorkerThread(ContextT ctx): context(ctx) {}
+	};
+
+	struct WorkerThreadContext {
+		int id = -1;
+		bool done = false;
+		Store &store;
+		Queue<Request> &queue;
+		pthread_mutex_t &queue_lock;
+
+		WorkerThreadContext(
+			Store &store,
+			Queue<Request> &queue,
+			pthread_mutex_t &queue_lock):
+			store(store),
+			queue(queue),
+			queue_lock(queue_lock) {}
+	};
+
+	struct ListenerThreadContext {
+		int id = -1;
+		uint16_t port;
+		bool done = false;
+		Set<Connection> &connections;
+		Queue<Request> &queue;
+		pthread_mutex_t &queue_lock;
+
+		ListenerThreadContext(
+			Set<Connection> &connections,
+			Queue<Request> &queue,
+			pthread_mutex_t &queue_lock):
+			connections(connections),
+			queue(queue),
+			queue_lock(queue_lock) {}
+	};
+
+	// static void peer_worker_func(WorkerThreadContext &ctx);
+	// static void client_worker_func(WorkerThreadContext &ctx);
+	static void peer_listener_func(ListenerThreadContext &ctx);
+	// static void client_listener_func(ListenerThreadContext &ctx);
+
+	using PeerListenerThread = WorkerThread<ListenerThreadContext, peer_listener_func>;
+	// using ClientListenerThread = WorkerThread<ListenerThreadContext, client_listener_func>;
+	// using ClientWorkerThread = WorkerThread<WorkerThreadContext, client_worker_func>;
+	// using PeerWorkerThread = WorkerThread<WorkerThreadContext, peer_worker_func>;
+
 	// All disk/mem i/o is done through this store interface.
 	Store &store;
 
@@ -33,31 +135,61 @@ struct Server {
 	int max_clients = 128; // Max clients the server will have connections with
 	int concurrency = 32;  // Number of worker threads
 
-	uint16_t port;
+	Vector<PeerInformation> peer_list;
 
-	pthread_mutex_t queue_lock;
+	httplib::Server peer_server;
+	httplib::Server client_server;
 
-	// Request Queue.
-	Queue<ServerRequest> queue;
+	uint16_t peer_port   = 4890; // Port for peer servers
+	uint16_t client_port = 4891; // Port for clients
 
-	void start_listener();
+	Set<Connection> peer_connections;
+	Set<Connection> client_connections;
+
+	// Peer Request Queue.
+	Queue<Request> peer_queue;
+	pthread_mutex_t peer_queue_lock;
+
+
+	// Client Request Queue.
+	Queue<Request> client_queue;
+	pthread_mutex_t client_queue_lock;
+
+	// ClientListenerThread client_listener;
+	PeerListenerThread peer_listener;
+
+	//Vector<ClientWorkerThread> client_worker_threads;
+	//Vector<PeerWorkerThread> peer_worker_threads;
+
+	void start();
+	void close();
 
 	void handle_client_request();
 	void handle_server_request();
 
-	Server(Store &s): store(s) {}
+	Server(Store &s, Vector<PeerInformation> peers = {}):
+		store(s),
+		peer_list(peers.begin(), peers.end()),
+/*		client_listener(ListenerThreadContext(
+			client_connections,
+			client_queue,
+			client_queue_lock
+		)),*/
+		peer_listener(ListenerThreadContext(
+			peer_connections,
+			peer_queue,
+			peer_queue_lock
+		)) {}
 };
 
+// struct Client {
+// 	String server_address;
+// 	uint16_t port;
 
-
-
-struct Client {
-	String server_address;
-	uint16_t port;
-
-	void connect();
-	QueryResult send_query();
-};
+// 	void connect();
+// 	void close();
+// 	QueryResult send_query();
+// };
 
 };
 
