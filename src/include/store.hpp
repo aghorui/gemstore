@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <string>
 #include "common.hpp"
-
+#include "json.hpp"
 
 namespace gem {
 
@@ -36,10 +36,7 @@ struct Value {
 
 struct Store {
 
-	template <typename K, typename V>
-	using Map = std::map<K, V>;
-
-	using UserKey = std::string;
+	using UserKey = String;
 	using HashKey = int64_t;
 	using ValueMap = Map<HashKey, Value>;
 
@@ -77,6 +74,20 @@ struct Store {
 	Status bulk_update(BulkStore) {
 
 	}*/
+};
+
+struct Query {
+	enum QueryType {
+		NORMAL,
+		PATTERN
+	};
+
+	QueryType query_type;
+	String query_string_json;
+};
+
+struct QueryResult {
+	Store::ValueMap values;
 };
 
 };
