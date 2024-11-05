@@ -23,11 +23,6 @@
 
 namespace gem {
 
-struct PeerInformation {
-	String sender_address;
-	uint16_t sender_port;
-};
-
 struct Connection {
 	enum ConnectionType {
 		PEER,
@@ -137,11 +132,11 @@ struct Server {
 
 	Vector<PeerInformation> peer_list;
 
-	httplib::Server peer_server;
-	httplib::Server client_server;
+	httplib::Server peer_server;    // Server handler for peer connections
+	httplib::Server client_server;  // Server handler for client connections
 
-	uint16_t peer_port   = 4890; // Port for peer servers
-	uint16_t client_port = 4891; // Port for clients
+	uint16_t peer_port   = 4095; // Port for peer servers
+	uint16_t client_port = 4096; // Port for clients
 
 	Set<Connection> peer_connections;
 	Set<Connection> client_connections;

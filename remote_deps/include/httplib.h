@@ -2041,13 +2041,8 @@ inline void default_socket_options(socket_t sock) {
   setsockopt(sock, SOL_SOCKET, SO_EXCLUSIVEADDRUSE,
              reinterpret_cast<const char *>(&opt), sizeof(opt));
 #else
-#ifdef SO_REUSEPORT
-  setsockopt(sock, SOL_SOCKET, SO_REUSEPORT,
-             reinterpret_cast<const void *>(&opt), sizeof(opt));
-#else
   setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
              reinterpret_cast<const void *>(&opt), sizeof(opt));
-#endif
 #endif
 }
 
