@@ -1,20 +1,23 @@
 #include "common.hpp"
 #include "networking.hpp"
+#include <cassert>
 #include <fstream>
 #include <csignal>
 
-gem::Store store;
-gem::Server server(store, {});
+gem::Server *server_ptr = nullptr;
 
 void terminate_handler(int) {
 	std::cerr << "Stopping Server...\n";
-	server.close();
+	assert(server_ptr != nullptr && "Server ptr should not be null.");
+	server_ptr->close();
 	std::cerr << "Exiting.\n";
 	exit(0);
 }
 
 int main(int argc, char **argv) {
+
 	gem::Config cfg;
+	gem::Store store;
 
 	if (argc >= 2) {
 		if (strcmp("-h", argv[1]) == 0 ||
@@ -81,6 +84,9 @@ int main(int argc, char **argv) {
 			}
 		}
 	}
+
+	gem::Server server(cfg, store, {});
+	server_ptr = &server;
 
 	std::cerr << GEMSTORE_NAME << " version " << GEMSTORE_VERSION << "\n";
 	std::cerr << "\n";

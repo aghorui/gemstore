@@ -10,7 +10,6 @@
 #include <cstdlib>
 #include <pthread.h>
 #include <unistd.h>
-#include <sys/epoll.h>
 #include <netdb.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -123,6 +122,9 @@ struct Server {
 	// using ClientWorkerThread = WorkerThread<WorkerThreadContext, client_worker_func>;
 	// using PeerWorkerThread = WorkerThread<WorkerThreadContext, peer_worker_func>;
 
+
+	Config &config;
+
 	// All disk/mem i/o is done through this store interface.
 	Store &store;
 
@@ -162,8 +164,9 @@ struct Server {
 	void handle_client_request();
 	void handle_server_request();
 
-	Server(Store &s, Vector<PeerInformation> peers = {}):
-		store(s),
+	Server(Config &config, Store &store, Vector<PeerInformation> peers = {}):
+		config(config),
+		store(store),
 		peer_list(peers.begin(), peers.end()),
 /*		client_listener(ListenerThreadContext(
 			client_connections,
