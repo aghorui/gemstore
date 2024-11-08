@@ -15,7 +15,6 @@ void terminate_handler(int) {
 }
 
 int main(int argc, char **argv) {
-
 	gem::Config cfg;
 	gem::Store store;
 

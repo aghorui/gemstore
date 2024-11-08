@@ -27,66 +27,263 @@ namespace gem {
 }*/
 
 void print_request(const httplib::Request &req) {
-	auto t = std::time(nullptr);
-	auto tm = *std::localtime(&t);
-
-	std::cerr << "[" << std::put_time(&tm, "%Y-%m-%d %H-%M-%S") << "] "
-	          << req.method << " " << req.target
-	          << " from " << req.remote_addr << ":" << req.remote_port
-	          << std::endl;
+	log() << req.method << " " << req.target << " from "
+	      << req.remote_addr << ":" << req.remote_port;
 }
+
+inline json err_msg(const std::string &msg) {
+	return json{
+		{ "message", msg }
+	};
+}
+
+/**** SERVER IMPLEMENTATION ***************************************************/
 
 void root_handler(gem::Server &, const httplib::Request &req, httplib::Response &resp) {
 	print_request(req);
-	resp.set_content("pong", "text/plain");
+	RootData r;
+	r.nickname = "acd";
+	r.connected_peers = 20;
+	resp.set_content(json(r).dump(), "application/json");
 }
 
 void sync_get_handler(gem::Server &, const httplib::Request &req, httplib::Response &resp) {
 	print_request(req);
-	json j = {
-		{ "hash", "23j12j3i2w" },
-		{ "last", 3123123232323 },
-		{ "stamp", 3343 }
-	};
-	resp.set_content(j.dump(), "application/json");
+	SyncStatusData s;
+	s.hash = "dasdasd";
+	s.last = 23123;
+	s.stamp = 1232;
+	resp.set_content(json(s).dump(), "application/json");
 }
 
 void config_get_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
 	print_request(req);
-	json j;
-	to_json(j, server.config);
-	resp.set_content(j.dump(), "application/json");
+	resp.set_content(json(server.config).dump(), "application/json");
+}
+
+void client_query_get_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
+	print_request(req);
+	std::string query = req.get_param_value("q");
+
+	if (query.empty()) {
+		resp.status = httplib::BadRequest_400;
+		resp.set_content(err_msg("no parameter 'q' specified"), "application/json");
+
+	} else {
+		Value v;
+
+		try {
+			v = server.store.get(query);
+		} catch (Store::KeyNotFoundException&) {
+			resp.status = httplib::NotFound_404;
+			resp.set_content(err_msg("key not found"), "application/json");
+			return;
+		}
+
+		KeyValueData k;
+		k.key = query;
+		k.value = v.to_json_value();
+
+		resp.status = httplib::OK_200;
+		resp.set_content(json(k).dump(), "application/json");
+	}
+}
+
+void client_query_set_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
+	print_request(req);
+	KeyValueData k;
+	/*std::string key = req.get_param_value("key");
+	std::string value_str = req.get_param_value("value");
+	json value;
+
+	if (key.empty() || value.empty()) {
+		resp.status = httplib::BadRequest_400;
+		resp.set_content(
+			err_msg("'key' or 'value' not specified"),
+			"application/json");
+		return;
+	}*/
+
+	try {
+		k = json::parse(req.body);
+	} catch (json::parse_error&) {
+		resp.status = httplib::BadRequest_400;
+		resp.set_content(
+			err_msg("specified value is not valid json"),
+			"application/json");
+		return;
+	}
+
+	if (k.value.is_object()) {
+		resp.status = httplib::NotImplemented_501;
+		resp.set_content(
+			err_msg("object storage is not implemented yet"),
+			"application/json");
+		return;
+	}
+
+	Value in_value;
+	in_value.type = get_type_from_json(k.value);
+	in_value.storage = k.value;
+
+	if (!server.store.set(k.key, in_value)) {
+		resp.status = httplib::NotImplemented_501;
+		resp.set_content(
+			err_msg("object storage is not implemented yet"),
+			"application/json");
+		return;
+	}
+
+	resp.status = httplib::OK_200;
+}
+
+void client_dump_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
+	print_request(req);
+	resp.status = httplib::OK_200;
+	resp.set_content(server.store.dump().dump(), "application/json");
 }
 
 #define HANDLER(__handler_func) \
-	[&](const httplib::Request &req, httplib::Response &resp) { \
+	([&](const httplib::Request &req, httplib::Response &resp) { \
 		__handler_func((*this), req, resp); \
-	}
+	})
 
 void Server::start() {
-
 	peer_server.Get("/", HANDLER(root_handler));
 	peer_server.Get("/sync", HANDLER(sync_get_handler));
 	peer_server.Get("/config", HANDLER(config_get_handler));
 
-	std::cerr << "Starting server at 0.0.0.0:" << peer_port << std::endl;
+	client_server.Get("/", HANDLER(root_handler));
+	client_server.Get("/query", HANDLER(client_query_get_handler));
+	client_server.Post("/set", HANDLER(client_query_set_handler));
+	client_server.Get("/dump", HANDLER(client_dump_handler));
 
-	if (!peer_server.bind_to_port("0.0.0.0", peer_port)) {
-		std::cerr << "Could not bind to port." << std::endl;
-		return;
-	}
+	std::thread peer_server_thread([&]{
+		log() << "Starting peer server at http://127.0.0.1:" << peer_port;
 
-	if (!peer_server.listen_after_bind()) {
-		std::cerr << "Could not listen on socket." << std::endl;
-		return;
-	}
+		if (!peer_server.bind_to_port(GEM_DEFAULT_SERVER_ADDRESS, peer_port)) {
+			log() << "[peer_server] Could not bind to port.";
+			exit(1);
+		}
 
-	std::cerr << "Exited." << std::endl;
+		if (!peer_server.listen_after_bind()) {
+			log() << "[peer_server] Could not listen on socket.";
+			exit(1);
+		}
+	});
+
+	std::thread client_server_thread([&]{
+		log() << "Starting client server at http://127.0.0.1:" << client_port;
+
+		if (!client_server.bind_to_port(GEM_DEFAULT_SERVER_ADDRESS, client_port)) {
+			log() << "[client_server] Could not bind to port.";
+			exit(1);
+		}
+
+		if (!client_server.listen_after_bind()) {
+			log() << "[client_server] Could not listen on socket.";
+			exit(1);
+		}
+	});
+
+	peer_server_thread.join();
+	client_server_thread.join();
 }
 
 void Server::close() {
 	peer_server.stop();
 	client_server.stop();
+}
+
+/**** CLIENT IMPLEMENTATION ***************************************************/
+
+QueryResult Client::get_value(std::string key)  {
+	Value v;
+
+	httplib::Params params;
+	params.emplace("q", key);
+
+	auto res = client.Get(httplib::append_query_params("/query", params));
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	KeyValueData k = json::parse(res->body);
+
+	v.type = get_type_from_json(k.value);
+	v.storage = k.value;
+
+	return {v};
+}
+
+bool Client::set_value(const std::string &key, const Value &value) {
+	KeyValueData k;
+	k.key = key;
+	k.value = value.to_json_value();
+	log() << "Client Config: " << client.host() << " " << client.port();
+	log() << "Peer Client Config: " << peer_client.host() << " " << peer_client.port();
+	auto res = client.Post("/set", json(k).dump(), "application/json");
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	return true;
+}
+
+Config Client::peer_get_config() {
+	auto res = peer_client.Get("/config");
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	Config c = json::parse(res->body);
+
+	return c;
+}
+
+SyncStatusData Client::peer_get_sync_data() {
+	auto res = peer_client.Get("/sync");
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	SyncStatusData s = json::parse(res->body);
+
+	return s;
+}
+
+json Client::dump() {
+	auto res = client.Get("/dump");
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	return json::parse(res->body);
 }
 
 };

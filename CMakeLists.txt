@@ -15,7 +15,7 @@ set(TEST_OUTPUT_DIR "${CMAKE_BINARY_DIR}/tests")
 include_directories("${SRC_ROOT}/include")
 include_directories("${REMOTE_DEP_DIR}")
 
-add_compile_options("-std=c++11" "-Wall" "-Wextra" "-g")
+add_compile_options("-std=c++11" "-Wall" "-Wextra" "-Wno-unused-function" "-g")
 
 file(GLOB TEST_SOURCES "${SRC_ROOT}/tests/*.cpp")
 

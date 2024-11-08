@@ -1,21 +1,48 @@
+/*
+ * store.hpp - Storage Infrastructure.
+ */
+
+#ifndef GEM_STORE_HPP
+#define GEM_STORE_HPP
+
+#include <exception>
 #include <map>
+#include <stdexcept>
 #include <stdint.h>
 #include <string>
 #include "common.hpp"
 #include "json.hpp"
 
 namespace gem {
-
 /**
  * @brief      Describes a type presented in a store value.
  */
-enum class Type {
+enum class ValueType {
 	None   = 0,
-	Int    = 1,
-	Float  = 2,
-	String = 3,
-	Array  = 4
+	Bool   = 1,
+	Int    = 2,
+	Float  = 3,
+	String = 4,
+	Array  = 5
 };
+
+
+#ifdef DUMMY_IMPLEMENTATION
+
+using ValueStorage = json;
+
+struct Value {
+	ValueType type = ValueType::None;
+	ValueStorage storage;
+
+	json to_json_value() const {
+		return storage;
+	}
+};
+
+Value value_from_json(const json &j);
+
+#else
 
 /**
  * @brief      The values that are present in a store
@@ -23,71 +50,106 @@ enum class Type {
 union ValueStorage {
 	int64_t i;
 	long double f;
-	void *v;
+	void *data;
 	// How will you handle non scalar data types?
 	// - will you define shortarrays in this union?
 	//   eg: `char[sizeof(int64_t)] c4;` ?
 };
 
 struct Value {
-	Type type = Type::None;
-	ValueStorage value;
+	ValueType type = ValueType::None;
+	ValueStorage storage;
+
+	json to_json_value() {
+		// TODO
+	}
 };
 
-struct Store {
+Value value_from_json(const json &j);
 
-	using UserKey = String;
-	using HashKey = int64_t;
-	using ValueMap = Map<HashKey, Value>;
+#endif
+
+/*
+static inline void to_json(json& j, const Value& v) {
+	switch (v.type) {
+	case Type::None:   j = json{nullptr};                               break;
+	case Type::Int:    j = json{v.storage.i};                           break;
+	case Type::Float:  j = json{v.storage.f};                           break;
+	case Type::String: j = json{(char *) v.storage.data};               break;
+
+	case Type::Array:
+		j = json::array();
+		std::vector<Value> *source = (std::vector<Value> *) v.storage.data;
+		for (auto &item : *source) {
+			j.push_back(item);
+		}
+		break;
+	}
+}
+
+static inline void from_json(const json& j, Value& v) {
+	if (j.is_null()) {
+		v.type = Type::None;
+	} else if (j.is_number_integer()) {
+		v.type = Type::Int;
+		v.storage.i = j.template get<int64_t>();
+	} else if (j.is_string()) {
+		v.type = Type::String;
+		v.storage.data = j.template get<std::string>();
+	} else if (j.is_number_float()) {
+		v.type = Type::Float;
+		v.storage.f = j.template get<long double>();
+	} else if (j.is_array()) {
+		v.type = Type::Array;
+		std::vector<Value> *arr = new std::vector<Value>();
+		for (auto value : j) {
+			json new_value;
+
+			from_json(j, v);
+			arr->push_back(new_value)
+		}
+		v.storage.data = arr;
+	}
+}*/
+
+struct Store {
+	using Key = String;
+
+#ifdef DUMMY_IMPLEMENTATION
+	using ValueMap = json;
+
+	using KeyValuePair = struct {
+		Key key;
+		Value value;
+	};
+
+#else
+	// TODO
+#endif
 
 	using Status = int;
 
 	/* GLOBAL_WRITE_LOCK? */
 	/* Would it be possible to do simultaneous writes? */
+	ValueMap vmap;
 
-	ValueMap v;
+	bool contains(const Key &u);
+	Value get(const Key &u);
+	Value get_pattern(const Key &u);
+	bool set(const Key &u, Value &v);
+	bool del(const Key &u);
+	bool del_pattern(const Key &u);
+	bool bulk_update(Vector<KeyValuePair> &k);
+	json dump(); // dump everything as a json object
 
-/*	HashKey convert_to_hash(const UserKey &u) {
-		// ...
-	}
-
-	Value get(UserKey h) {
-
-	}
-
-	Value get_pattern(UserKey h) {
-
-	}
-
-	Value set(UserKey h) {
-
-	}
-
-	Value del(UserKey h) {
-
-	}
-
-	Value del_pattern(UserKey h) {
-
-	}
-
-	Status bulk_update(BulkStore) {
-
-	}*/
-};
-
-struct Query {
-	enum QueryType {
-		NORMAL,
-		PATTERN
+	struct KeyNotFoundException : public std::invalid_argument {
+		const Key u;
+		KeyNotFoundException(const Key u): std::invalid_argument(u) {}
 	};
-
-	QueryType query_type;
-	String query_string_json;
 };
 
-struct QueryResult {
-	Store::ValueMap values;
-};
+ValueType get_type_from_json(const json &j);
 
 };
+
+#endif

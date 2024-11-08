@@ -2,13 +2,14 @@
  * networking.hpp - Networking Infrastructure.
  */
 
-#ifndef NETWORKING_HPP
-#define NETWORKING_HPP
+#ifndef GEM_NETWORKING_HPP
+#define GEM_NETWORKING_HPP
 
 #include <cstdint>
 #include <queue>
 #include <cstdlib>
 #include <pthread.h>
+#include <stdexcept>
 #include <unistd.h>
 #include <netdb.h>
 #include <sys/types.h>
@@ -18,6 +19,10 @@
 
 #include "common.hpp"
 #include "store.hpp"
+
+#define GEM_DEFAULT_SERVER_ADDRESS "127.0.0.1"
+#define GEM_DEFAULT_CLIENT_PORT 4095
+#define GEM_DEFAULT_PEER_PORT 4096
 
 
 namespace gem {
@@ -49,10 +54,99 @@ struct Request {
 	Connection &requester;
 };
 
+/**** NETWORKING DATA EXCHANGE STRUCTS ****************************************/
+
+struct RootData {
+	std::string nickname;
+	uint64_t connected_peers;
+};
+
+static inline void to_json(json& j, const RootData& p) {
+	j = json{
+		{ "nickname",        p.nickname        },
+		{ "connected_peers", p.connected_peers }
+	};
+}
+
+static inline void from_json(const json& j, RootData& p) {
+	j.at("nickname").get_to(p.nickname);
+	j.at("connected_peers").get_to(p.connected_peers);
+}
+
+struct SyncStatusData {
+	std::string hash;
+	uint64_t last;
+	uint64_t stamp;
+};
+
+static inline void to_json(json& j, const SyncStatusData& p) {
+	j = json{
+		{ "hash",  p.hash },
+		{ "last",  p.last },
+		{ "stamp", p.stamp }
+	};
+}
+
+static inline void from_json(const json& j, SyncStatusData& p) {
+	j.at("hash").get_to(p.hash);
+	j.at("last").get_to(p.last);
+	j.at("stamp").get_to(p.stamp);
+}
+
+struct KeyValueData {
+	std::string key;
+	json value;
+};
+
+static inline void to_json(json& j, const KeyValueData& p) {
+	j = json{
+		{ "key",  p.key },
+		{ "value",  p.value }
+	};
+}
+
+static inline void from_json(const json& j, KeyValueData& p) {
+	j.at("key").get_to(p.key);
+	j.at("value").get_to(p.value);
+}
+
+struct Query {
+	enum QueryType {
+		NORMAL,
+		PATTERN
+	};
+
+	enum QueryAction {
+		GET,
+		SET,
+		DELETE
+	};
+
+	QueryType query_type;
+	QueryAction query_action;
+	String key;
+	String value;
+};
+
+#ifdef DUMMY_IMPLEMENTATION
+
+using QueryResult = Vector<Value>;
+
+#else
+// TODO
+/*
+struct QueryResult {
+	Store::ValueMap values;
+};
+*/
+#endif
+
+/******************************************************************************/
+
 struct Server;
 
 struct Server {
-
+/*
 	template<typename ContextT, void (*thread_func)(ContextT &)>
 	static void *worker_thread_func(void *arg) {
 		ContextT *context = (ContextT *) arg;
@@ -121,7 +215,7 @@ struct Server {
 	// using ClientListenerThread = WorkerThread<ListenerThreadContext, client_listener_func>;
 	// using ClientWorkerThread = WorkerThread<WorkerThreadContext, client_worker_func>;
 	// using PeerWorkerThread = WorkerThread<WorkerThreadContext, peer_worker_func>;
-
+*/
 
 	Config &config;
 
@@ -143,6 +237,7 @@ struct Server {
 	Set<Connection> peer_connections;
 	Set<Connection> client_connections;
 
+/*
 	// Peer Request Queue.
 	Queue<Request> peer_queue;
 	pthread_mutex_t peer_queue_lock;
@@ -157,6 +252,7 @@ struct Server {
 
 	//Vector<ClientWorkerThread> client_worker_threads;
 	//Vector<PeerWorkerThread> peer_worker_threads;
+*/
 
 	void start();
 	void close();
@@ -167,27 +263,48 @@ struct Server {
 	Server(Config &config, Store &store, Vector<PeerInformation> peers = {}):
 		config(config),
 		store(store),
-		peer_list(peers.begin(), peers.end()),
+		peer_list(peers.begin(), peers.end())
 /*		client_listener(ListenerThreadContext(
 			client_connections,
 			client_queue,
 			client_queue_lock
-		)),*/
+		)),
 		peer_listener(ListenerThreadContext(
 			peer_connections,
 			peer_queue,
 			peer_queue_lock
-		)) {}
+		))*/ {}
 };
 
-// struct Client {
-// 	String server_address;
-// 	uint16_t port;
+struct ClientQueryError : public std::runtime_error {
+	ClientQueryError(const std::string &message):
+		std::runtime_error(message.c_str()) {}
 
-// 	void connect();
-// 	void close();
-// 	QueryResult send_query();
-// };
+	ClientQueryError(const httplib::Result &res):
+		std::runtime_error(httplib::to_string(res.error())) {}
+
+	ClientQueryError(const int &status):
+		std::runtime_error(httplib::status_message(status)) {}
+};
+
+struct Client {
+	String server_address;
+	uint16_t client_port;
+	uint16_t peer_port;
+	httplib::Client client;
+	httplib::Client peer_client;
+
+	QueryResult get_value(std::string key);
+	bool set_value(const std::string &key, const Value &value);
+	Config peer_get_config();
+	SyncStatusData peer_get_sync_data();
+	json dump();
+
+	Client(std::string url = "127.0.0.1",
+	       int client_port = GEM_DEFAULT_CLIENT_PORT,
+	       int peer_port = GEM_DEFAULT_PEER_PORT):
+		client(url, client_port), peer_client(url, peer_port) {}
+};
 
 };
 

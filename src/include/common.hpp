@@ -1,16 +1,27 @@
-#ifndef COMMON_HPP
-#define COMMON_HPP
+/*
+ * common.hpp - Common Components
+ */
+
+#ifndef GEM_COMMON_HPP
+#define GEM_COMMON_HPP
 
 #include "json.hpp"
 #include "httplib.h"
 #include <fstream>
 #include <map>
 #include <queue>
+#include <sstream>
 #include <string>
 #include <iostream>
 
 #define GEMSTORE_VERSION "0.1"
 #define GEMSTORE_NAME "gemstore"
+
+#define GEM_DEFAULT_SERVER_ADDRESS "127.0.0.1"
+#define GEM_DEFAULT_CLIENT_PORT 4095
+#define GEM_DEFAULT_PEER_PORT 4096
+
+#define DUMMY_IMPLEMENTATION
 
 namespace gem {
 
@@ -31,6 +42,40 @@ template <typename T>
 using Vector = std::vector<T>;
 
 bool validate_json(String json_str);
+
+/**
+ * @brief      Basic logging class. use this instead of std::cout and std::cerr
+ */
+class log {
+private:
+	std::ostringstream os;
+	std::ostream &stream;
+
+public:
+	// Used to handle cases like std::endl
+	using StreamFunction = std::ostream&(*)(std::ostream&);
+
+	template <typename T>
+	log& operator<<(T const& t) {
+		os << t;
+		return *this;
+	}
+
+	log& operator<<(StreamFunction f) {
+		os << f;
+		return *this;
+	}
+
+	log(std::ostream &stream = std::cerr): stream(stream) {
+		auto t = std::time(nullptr);
+		auto tm = *std::localtime(&t);
+		os << "[" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "] ";
+	}
+
+	~log() {
+		stream << os.str() << std::endl;
+	}
+};
 
 struct PeerInformation {
 	String address;
@@ -58,26 +103,6 @@ struct Config {
 	uint64_t max_client_connections = 128;
 	uint64_t max_concurrency = 30;
 	std::vector<PeerInformation> peers;
-
-	struct MappingTableEntry {
-		const char *key;
-		json::value_t type;
-		void *value_ptr;
-	};
-
-	using MappingTable = std::vector<MappingTableEntry>;
-
-	MappingTable table;
-
-	Config() {
-		table = {
-			INSERT_CONFIG(client_listener_port, json::value_t::number_unsigned),
-			INSERT_CONFIG(server_listener_port, json::value_t::number_unsigned),
-			INSERT_CONFIG(max_server_connections, json::value_t::number_unsigned),
-			INSERT_CONFIG(max_client_connections, json::value_t::number_unsigned),
-			INSERT_CONFIG(max_concurrency, json::value_t::array),
-		};
-	}
 };
 
 static inline void to_json(json& j, const Config& p) {
@@ -89,7 +114,6 @@ static inline void to_json(json& j, const Config& p) {
 		{ "max_concurrency",        p.max_concurrency        },
 		{ "peers",                  p.peers                  }
 	};
-
 }
 
 static inline void from_json(const json& j, Config& p) {
