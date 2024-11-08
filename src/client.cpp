@@ -110,6 +110,32 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
+	if (strcmp(argv[1], "get") == 0) {
+		if (argc < COMMAND_ARG_1 + 1) {
+			std::cerr << "Error: get requires at least 1 argument." << std::endl;
+			exit(0);
+		}
+
+		if (argc >= SERVINFO_1_OFFSET + 3 + 1) {
+			s = get_server_info(&argv[SERVINFO_1_OFFSET]);
+		}
+
+		gem::Client c(s.address, s.peer_port, s.client_port);
+
+		std::cout << "Getting '" << argv[COMMAND_ARG_1] <<"'..." << std::endl;
+
+		try {
+			gem::QueryResult v = c.get_value(argv[COMMAND_ARG_1]);
+			std::cout << "Value is: " << v[0].to_json_value() << std::endl;
+		} catch (std::exception &e) {
+			std::cerr << "Error: " << e.what() << "\n";
+			exit(1);
+		}
+
+		std::cout << "Done." << "\n";
+		exit(0);
+	}
+
 	if (strcmp(argv[1], "configinfo") == 0) {
 		if (argc >= SERVINFO_0_OFFSET + 3 + 1) {
 			s = get_server_info(&argv[SERVINFO_1_OFFSET]);
