@@ -95,7 +95,7 @@ void sync_worker(gem::Server &server) {
 
 			for (auto &p : server.peer_list) {
 				try {
-					Client peer_client(p.address, p.client_port, p.peer_port);
+					Client peer_client(p.address, p.peer_port, p.client_port);
 					log() << "Pinging " << p.address << ":" << p.peer_port;
 					SyncData s = peer_client.peer_get_sync_changeset();
 

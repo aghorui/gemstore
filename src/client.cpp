@@ -35,6 +35,11 @@ struct ServerInfo {
 	const char *address = "127.0.0.1";
 	int peer_port = 4095;
 	int client_port = 4096;
+
+	void print() {
+		std::cout << "Server Info: " << address << " peer: " << peer_port
+		          << "client: " << client_port << std::endl;
+	}
 };
 
 ServerInfo get_server_info(char **argv) {
@@ -45,6 +50,7 @@ ServerInfo get_server_info(char **argv) {
 
 	return s;
 }
+
 
 #define BASE_COMMAND 1
 #define COMMAND_ARG_1 2
@@ -72,6 +78,9 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
+	std::cerr << "argc is: " << argc << std::endl
+	          << ">>> " << SERVINFO_2_OFFSET + 3 + 1 << std::endl;
+
 	ServerInfo s;
 
 	if (strcmp(argv[1], "set") == 0) {
@@ -80,11 +89,12 @@ int main(int argc, char **argv) {
 			exit(0);
 		}
 
-		if (argc >= SERVINFO_2_OFFSET + 3 + 1) {
+		if (argc >= SERVINFO_2_OFFSET + 3) {
 			s = get_server_info(&argv[SERVINFO_2_OFFSET]);
 		}
 
-		gem::Client c(s.address, s.client_port, s.peer_port);
+		s.print();
+		gem::Client c(s.address, s.peer_port, s.client_port);
 		gem::Value v;
 
 		try {
@@ -116,10 +126,11 @@ int main(int argc, char **argv) {
 			exit(0);
 		}
 
-		if (argc >= SERVINFO_1_OFFSET + 3 + 1) {
+		if (argc >= SERVINFO_1_OFFSET + 3) {
 			s = get_server_info(&argv[SERVINFO_1_OFFSET]);
 		}
 
+		s.print();
 		gem::Client c(s.address, s.peer_port, s.client_port);
 
 		std::cout << "Getting '" << argv[COMMAND_ARG_1] <<"'..." << std::endl;
@@ -137,11 +148,12 @@ int main(int argc, char **argv) {
 	}
 
 	if (strcmp(argv[1], "configinfo") == 0) {
-		if (argc >= SERVINFO_0_OFFSET + 3 + 1) {
+		if (argc >= SERVINFO_0_OFFSET + 3) {
 			s = get_server_info(&argv[SERVINFO_0_OFFSET]);
 		}
 
-		gem::Client c(s.address, s.client_port, s.peer_port);
+		s.print();
+		gem::Client c(s.address, s.peer_port, s.client_port);
 
 		std::cout << "Getting config..." << std::endl;
 
@@ -183,7 +195,8 @@ int main(int argc, char **argv) {
 			s = get_server_info(&argv[SERVINFO_0_OFFSET]);
 		}
 
-		gem::Client c(s.address, s.client_port, s.peer_port);
+		s.print();
+		gem::Client c(s.address, s.peer_port, s.client_port);
 
 		std::cout << "Getting dump..." << std::endl;
 

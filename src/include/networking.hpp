@@ -280,8 +280,8 @@ struct Client {
 	SyncData peer_get_sync_changeset();
 
 	Client(std::string url = "127.0.0.1",
-	       int client_port = GEM_DEFAULT_CLIENT_PORT,
-	       int peer_port = GEM_DEFAULT_PEER_PORT):
+	       int peer_port = GEM_DEFAULT_PEER_PORT,
+	       int client_port = GEM_DEFAULT_CLIENT_PORT):
 		client(url, client_port), peer_client(url, peer_port) {}
 };
 
