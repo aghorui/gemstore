@@ -7,6 +7,7 @@
 
 #include <exception>
 #include <map>
+#include <mutex>
 #include <stdexcept>
 #include <stdint.h>
 #include <string>
@@ -40,6 +41,7 @@ struct Value {
 	}
 };
 
+ValueType get_type_from_json(const json &j);
 Value value_from_json(const json &j);
 
 #else
@@ -65,6 +67,8 @@ struct Value {
 	}
 };
 
+
+ValueType get_type_from_json(const json &j);
 Value value_from_json(const json &j);
 
 #endif
@@ -112,17 +116,41 @@ static inline void from_json(const json& j, Value& v) {
 	}
 }*/
 
+enum class MergeAttributes {
+	NUM_NONE,
+	NUM_MIN,
+	NUM_MAX,
+	NUM_AVERAGE,
+	STR_NONE,
+	STR_CONCAT,
+	ARR_NONE,
+	ARR_CONCAT
+};
+
+using Key = String;
+
+struct KeyValuePair {
+	Key key;
+	Value value;
+};
+
+static inline void to_json(json& j, const KeyValuePair& p) {
+	j = json{
+		{ "key", p.key },
+		{ "value", p.value.storage }
+	};
+}
+
+static inline void from_json(const json& j, KeyValuePair& p) {
+	j.at("key").get_to(p.key);
+	p.value.type = get_type_from_json(j.at("value"));
+	j.at("value").get_to(p.value.storage);
+}
+
 struct Store {
-	using Key = String;
 
 #ifdef DUMMY_IMPLEMENTATION
 	using ValueMap = json;
-
-	using KeyValuePair = struct {
-		Key key;
-		Value value;
-	};
-
 #else
 	// TODO
 #endif
@@ -131,6 +159,7 @@ struct Store {
 
 	/* GLOBAL_WRITE_LOCK? */
 	/* Would it be possible to do simultaneous writes? */
+	std::mutex vmap_lock;
 	ValueMap vmap;
 
 	bool contains(const Key &u);
@@ -139,6 +168,10 @@ struct Store {
 	bool set(const Key &u, Value &v);
 	bool del(const Key &u);
 	bool del_pattern(const Key &u);
+
+	// template<typename T>
+	// json bulk_get(T begin, T end);
+	Vector<KeyValuePair> bulk_get(Vector<Key> &k);
 	bool bulk_update(Vector<KeyValuePair> &k);
 	json dump(); // dump everything as a json object
 
@@ -147,8 +180,6 @@ struct Store {
 		KeyNotFoundException(const Key u): std::invalid_argument(u) {}
 	};
 };
-
-ValueType get_type_from_json(const json &j);
 
 };
 

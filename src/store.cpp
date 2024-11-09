@@ -14,11 +14,15 @@ ValueType get_type_from_json(const json &j) {
 	else assert(0 && "Invlaid value type");
 }
 
-bool Store::contains(const Store::Key &u) {
-	return vmap.contains(u);
+bool Store::contains(const Key &u) {
+	vmap_lock.lock();
+	bool ret = vmap.contains(u);
+	vmap_lock.unlock();
+	return ret;
 }
 
-Value Store::get(const Store::Key &u) {
+Value Store::get(const Key &u) {
+	vmap_lock.lock();
 	if (vmap.count(u) < 1) {
 		throw KeyNotFoundException(u);
 	}
@@ -26,30 +30,48 @@ Value Store::get(const Store::Key &u) {
 	Value v;
 	v.type = get_type_from_json(vmap[u]),
 	v.storage = vmap[u];
-
+	vmap_lock.unlock();
 	return v;
 }
 
-Value Store::get_pattern(const Store::Key &) {
+Value Store::get_pattern(const Key &) {
 	assert(0 && "not implemented");
 }
 
-bool Store::set(const Store::Key &u, Value &v) {
+bool Store::set(const Key &u, Value &v) {
+	vmap_lock.lock();
 	vmap[u] = v.storage;
+	vmap_lock.unlock();
 	return true;
 }
 
-bool Store::del(const Store::Key &u) {
+bool Store::del(const Key &u) {
+	vmap_lock.lock();
 	if (vmap.count(u) < 1) {
+		vmap_lock.unlock();
 		return false;
 	} else {
 		vmap.erase(u);
+		vmap_lock.unlock();
 		return true;
 	}
 }
 
-bool Store::del_pattern(const Store::Key &) {
+bool Store::del_pattern(const Key &) {
 	assert(0 && "not implemented");
+}
+
+Vector<KeyValuePair> Store::bulk_get(Vector<Key> &k) {
+	Vector<KeyValuePair> kvs;
+
+	for (auto &key : k) {
+		KeyValuePair kv;
+		kv.key = key;
+		kv.value = get(key);
+		kvs.push_back(kv);
+	}
+
+	return kvs;
 }
 
 bool Store::bulk_update(Vector<KeyValuePair> &kvs) {

@@ -26,7 +26,7 @@ void print_help_message(const char *execname) {
 	<< "  " << execname << " set <key> <value> [SERVINFO]  " << "Set a key\n"
 	<< "  " << execname << " get <key> [SERVINFO]          " << "Get a key\n"
 	<< "  " << execname << " configinfo [SERVINFO]         " << "Gets the config info for the server\n"
-	<< "  " << execname << " syncinfo [SERVINFO]           " << "Gets the sync info for the server\n"
+	//<< "  " << execname << " syncinfo [SERVINFO]           " << "Gets the sync info for the server\n"
 	<< "  " << execname << " dump [SERVINFO]               " << "Dump all server data\n"
 	<< help_message_footer;
 }
@@ -138,7 +138,7 @@ int main(int argc, char **argv) {
 
 	if (strcmp(argv[1], "configinfo") == 0) {
 		if (argc >= SERVINFO_0_OFFSET + 3 + 1) {
-			s = get_server_info(&argv[SERVINFO_1_OFFSET]);
+			s = get_server_info(&argv[SERVINFO_0_OFFSET]);
 		}
 
 		gem::Client c(s.address, s.client_port, s.peer_port);
@@ -157,7 +157,7 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
-	if (strcmp(argv[1], "syncinfo") == 0) {
+	/*if (strcmp(argv[1], "syncinfo") == 0) {
 		if (argc >= SERVINFO_0_OFFSET + 3 + 1) {
 			s = get_server_info(&argv[SERVINFO_1_OFFSET]);
 		}
@@ -167,7 +167,7 @@ int main(int argc, char **argv) {
 		std::cout << "Getting config..." << std::endl;
 
 		try {
-			gem::SyncStatusData v = c.peer_get_sync_data();
+			gem::SyncStatusData v = c.peer_get_sync_status_data();
 			std::cout << "Sync Status Info is: " << gem::json(v) << std::endl;
 		} catch (std::exception &e) {
 			std::cerr << "Error: " << e.what() << "\n";
@@ -176,11 +176,11 @@ int main(int argc, char **argv) {
 
 		std::cout << "Done." << "\n";
 		exit(0);
-	}
+	}*/
 
 	if (strcmp(argv[1], "dump") == 0) {
-		if (argc >= SERVINFO_0_OFFSET + 3 + 1) {
-			s = get_server_info(&argv[SERVINFO_1_OFFSET]);
+		if (argc >= SERVINFO_0_OFFSET + 3) {
+			s = get_server_info(&argv[SERVINFO_0_OFFSET]);
 		}
 
 		gem::Client c(s.address, s.client_port, s.peer_port);

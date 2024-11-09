@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	gem::Server server(cfg, store, {});
+	gem::Server server(cfg, store);
 	server_ptr = &server;
 
 	std::cerr << GEMSTORE_NAME << " version " << GEMSTORE_VERSION << "\n";

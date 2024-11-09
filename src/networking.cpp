@@ -1,6 +1,11 @@
+#include <chrono>
+#include <cstdint>
+#include <cstdlib>
 #include <ctime>
+#include <exception>
 #include <iomanip>
 #include <iostream>
+#include <thread>
 #include "common.hpp"
 #include "httplib.h"
 
@@ -31,10 +36,78 @@ void print_request(const httplib::Request &req) {
 	      << req.remote_addr << ":" << req.remote_port;
 }
 
-inline json err_msg(const std::string &msg) {
+inline std::string err_msg(const std::string &msg) {
 	return json{
 		{ "message", msg }
-	};
+	}.dump();
+}
+
+/**** SYNC IMPLEMENTATION *****************************************************/
+
+enum class OperationType {
+	CREATE,
+	SET,
+	DELETE,
+	SETATTR
+};
+
+struct HistoryEntry {
+	uint64_t timestamp;
+	uint64_t index;
+	uint64_t predecessor;
+	uint64_t blame;
+	OperationType operation;
+	std::string key;
+	Value value;
+	std::vector<MergeAttributes> attrs;
+};
+
+struct History {
+	Queue<HistoryEntry> list;
+	Map<uint64_t, uint64_t> peer_indexes;
+	uint64_t stamp_autonumber = 0;
+	uint64_t queue_limit = 1024;
+
+	void add_transaction(
+		OperationType operation,
+		const std::string &key,
+		Value &v, std::vector<MergeAttributes> attrs = {});
+
+	void merge_history(
+		std::vector<HistoryEntry> merge_list,
+		Store &s);
+
+	bool need_full_sync(uint64_t timestamp, uint64_t index);
+
+	uint64_t sync_start_index();
+};
+
+// milliseconds
+#define POLL_DELAY 500
+
+void sync_worker(gem::Server &server) {
+	// ping each server
+	// if stamp is not equal to current, send sync request
+	// merge data
+
+	while (true) {
+		std::this_thread::sleep_for(std::chrono::milliseconds(POLL_DELAY));
+
+			for (auto &p : server.peer_list) {
+				try {
+					Client peer_client(p.address, p.client_port, p.peer_port);
+					log() << "Pinging " << p.address << ":" << p.peer_port;
+					SyncData s = peer_client.peer_get_sync_changeset();
+
+					if (s.values.size() > 0) {
+						server.store.bulk_update(s.values);
+					}
+				} catch (std::exception &e) {
+					log() << "Error on pinging "
+					      << p.address << ":" << p.peer_port << ": " << e.what();
+				}
+			}
+	}
 }
 
 /**** SERVER IMPLEMENTATION ***************************************************/
@@ -47,13 +120,52 @@ void root_handler(gem::Server &, const httplib::Request &req, httplib::Response 
 	resp.set_content(json(r).dump(), "application/json");
 }
 
-void sync_get_handler(gem::Server &, const httplib::Request &req, httplib::Response &resp) {
+void sync_post_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
 	print_request(req);
-	SyncStatusData s;
-	s.hash = "dasdasd";
-	s.last = 23123;
-	s.stamp = 1232;
-	resp.set_content(json(s).dump(), "application/json");
+	PeerInformation p;
+
+	try {
+		p = json::parse(req.body);
+	} catch (json::parse_error &e) {
+		resp.status = httplib::BadRequest_400;
+		resp.set_content(err_msg("malformed request"), "application/json");
+		return;
+	}
+
+	p.address = req.local_addr;
+
+	if (server.peer_list.count(p) < 1) {
+		resp.status = httplib::Forbidden_403;
+		resp.set_content(err_msg("not a peer"), "application/json");
+		return;
+	}
+
+	bool force_resync = false;
+	std::string force_resync_str = req.get_header_value("Gem-Force-Resync");
+	if (force_resync_str == "true") {
+		force_resync = true;
+	}
+
+	server.push_queues_lock.lock();
+
+	if (server.push_queues.count(p) < 1 || force_resync) {
+		// new request
+		server.push_queues[p] = {};
+		resp.status = httplib::OK_200;
+		resp.set_content(server.store.dump().dump(), "application/json");
+	} else {
+		json changeset = server.store.bulk_get(server.push_queues[p]);
+		resp.status = httplib::OK_200;
+		if (changeset.size() == 0) {
+			resp.set_content("[]", "application/json");
+		} else {
+			resp.set_content(changeset.dump(), "application/json");
+		}
+
+		server.push_queues[p].clear();
+	}
+
+	server.push_queues_lock.unlock();
 }
 
 void config_get_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
@@ -68,7 +180,7 @@ void client_query_get_handler(gem::Server &server, const httplib::Request &req, 
 	if (query.empty()) {
 		resp.status = httplib::BadRequest_400;
 		resp.set_content(err_msg("no parameter 'q' specified"), "application/json");
-
+		return;
 	} else {
 		Value v;
 
@@ -86,6 +198,7 @@ void client_query_get_handler(gem::Server &server, const httplib::Request &req, 
 
 		resp.status = httplib::OK_200;
 		resp.set_content(json(k).dump(), "application/json");
+		return;
 	}
 }
 
@@ -134,6 +247,14 @@ void client_query_set_handler(gem::Server &server, const httplib::Request &req, 
 		return;
 	}
 
+	server.push_queues_lock.lock();
+
+	for (auto &queue : server.push_queues) {
+		queue.second.push_back(k.key);
+	}
+
+	server.push_queues_lock.unlock();
+
 	resp.status = httplib::OK_200;
 }
 
@@ -143,6 +264,21 @@ void client_dump_handler(gem::Server &server, const httplib::Request &req, httpl
 	resp.set_content(server.store.dump().dump(), "application/json");
 }
 
+void exception_handler(const httplib::Request &req, httplib::Response &, std::exception_ptr ep) {
+	if (!ep) {
+		log() << "INTERNAL ERROR WITH BAD EXCPETION ON "
+		      << req.method << " " << req.target << " from "
+		      << req.remote_addr << ":" << req.remote_port;
+	}
+
+	try {
+		std::rethrow_exception(ep);
+	} catch (std::exception &e) {
+		log() << "INTERNAL ERROR ON " << req.method << " " << req.target << " from "
+		      << req.remote_addr << ":" << req.remote_port << " : " << e.what();
+	}
+}
+
 #define HANDLER(__handler_func) \
 	([&](const httplib::Request &req, httplib::Response &resp) { \
 		__handler_func((*this), req, resp); \
@@ -150,13 +286,16 @@ void client_dump_handler(gem::Server &server, const httplib::Request &req, httpl
 
 void Server::start() {
 	peer_server.Get("/", HANDLER(root_handler));
-	peer_server.Get("/sync", HANDLER(sync_get_handler));
+	peer_server.Post("/sync", HANDLER(sync_post_handler));
 	peer_server.Get("/config", HANDLER(config_get_handler));
+	peer_server.set_exception_handler(exception_handler);
 
 	client_server.Get("/", HANDLER(root_handler));
 	client_server.Get("/query", HANDLER(client_query_get_handler));
 	client_server.Post("/set", HANDLER(client_query_set_handler));
 	client_server.Get("/dump", HANDLER(client_dump_handler));
+	client_server.set_exception_handler(exception_handler);
+
 
 	std::thread peer_server_thread([&]{
 		log() << "Starting peer server at http://127.0.0.1:" << peer_port;
@@ -185,6 +324,12 @@ void Server::start() {
 			exit(1);
 		}
 	});
+
+	std::thread sync_thread;
+
+	if (peer_list.size() > 0) {
+		sync_thread = std::thread([&] { sync_worker(*this); });
+	}
 
 	peer_server_thread.join();
 	client_server_thread.join();
@@ -256,8 +401,14 @@ Config Client::peer_get_config() {
 	return c;
 }
 
-SyncStatusData Client::peer_get_sync_data() {
-	auto res = peer_client.Get("/sync");
+SyncData Client::peer_get_sync_changeset() {
+	PeerInformation p;
+	p.address = "127.0.0.1"; // PLACEHOLDER
+	p.peer_port = peer_port;
+	p.client_port = client_port;
+
+	auto res = peer_client.Post("/sync",
+		json(p).dump(), "application/json");
 
 	if (!res) {
 		throw ClientQueryError(res);
@@ -267,7 +418,8 @@ SyncStatusData Client::peer_get_sync_data() {
 		throw ClientQueryError(res->status);
 	}
 
-	SyncStatusData s = json::parse(res->body);
+	SyncData s;
+	s.values = json::parse(res->body);
 
 	return s;
 }

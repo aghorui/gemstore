@@ -6,6 +6,7 @@
 #define GEM_NETWORKING_HPP
 
 #include <cstdint>
+#include <mutex>
 #include <queue>
 #include <cstdlib>
 #include <pthread.h>
@@ -20,39 +21,7 @@
 #include "common.hpp"
 #include "store.hpp"
 
-#define GEM_DEFAULT_SERVER_ADDRESS "127.0.0.1"
-#define GEM_DEFAULT_CLIENT_PORT 4095
-#define GEM_DEFAULT_PEER_PORT 4096
-
-
 namespace gem {
-
-struct Connection {
-	enum ConnectionType {
-		PEER,
-		CLIENT
-	};
-
-	ConnectionType connection_type;
-	String sender_address;
-	uint16_t sender_port;
-
-	int fd;
-
-	void close() {
-		::close(fd);
-	}
-};
-
-struct Request {
-	enum RequestType {
-		READ,
-		WRITE
-	};
-
-	RequestType request_type;
-	Connection &requester;
-};
 
 /**** NETWORKING DATA EXCHANGE STRUCTS ****************************************/
 
@@ -77,6 +46,10 @@ struct SyncStatusData {
 	std::string hash;
 	uint64_t last;
 	uint64_t stamp;
+};
+
+struct SyncData {
+	Vector<KeyValuePair> values;
 };
 
 static inline void to_json(json& j, const SyncStatusData& p) {
@@ -142,8 +115,6 @@ struct QueryResult {
 #endif
 
 /******************************************************************************/
-
-struct Server;
 
 struct Server {
 /*
@@ -226,7 +197,7 @@ struct Server {
 	int max_clients = 128; // Max clients the server will have connections with
 	int concurrency = 32;  // Number of worker threads
 
-	Vector<PeerInformation> peer_list;
+	Set<PeerInformation> peer_list;
 
 	httplib::Server peer_server;    // Server handler for peer connections
 	httplib::Server client_server;  // Server handler for client connections
@@ -234,8 +205,10 @@ struct Server {
 	uint16_t peer_port   = 4095; // Port for peer servers
 	uint16_t client_port = 4096; // Port for clients
 
-	Set<Connection> peer_connections;
-	Set<Connection> client_connections;
+	using PushQueue = Vector<Key>;
+
+	std::mutex push_queues_lock;
+	Map<PeerInformation, PushQueue> push_queues;
 
 /*
 	// Peer Request Queue.
@@ -260,10 +233,13 @@ struct Server {
 	void handle_client_request();
 	void handle_server_request();
 
-	Server(Config &config, Store &store, Vector<PeerInformation> peers = {}):
+	Server(Config &config, Store &store):
 		config(config),
 		store(store),
-		peer_list(peers.begin(), peers.end())
+		concurrency(config.max_concurrency),
+		peer_list(config.peers.begin(), config.peers.end()),
+		peer_port(config.server_listener_port),
+		client_port(config.client_listener_port)
 /*		client_listener(ListenerThreadContext(
 			client_connections,
 			client_queue,
@@ -296,9 +272,12 @@ struct Client {
 
 	QueryResult get_value(std::string key);
 	bool set_value(const std::string &key, const Value &value);
-	Config peer_get_config();
-	SyncStatusData peer_get_sync_data();
 	json dump();
+
+	Config peer_get_config();
+
+	bool should_sync();
+	SyncData peer_get_sync_changeset();
 
 	Client(std::string url = "127.0.0.1",
 	       int client_port = GEM_DEFAULT_CLIENT_PORT,

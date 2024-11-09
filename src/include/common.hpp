@@ -7,6 +7,7 @@
 
 #include "json.hpp"
 #include "httplib.h"
+#include <deque>
 #include <fstream>
 #include <map>
 #include <queue>
@@ -30,7 +31,7 @@ using json = nlohmann::json;
 using String = std::string;
 
 template<typename T>
-using Queue = std::queue<T>;
+using Queue = std::deque<T>;
 
 template <typename K, typename V>
 using Map = std::map<K, V>;
@@ -79,19 +80,28 @@ public:
 
 struct PeerInformation {
 	String address;
-	uint16_t port;
+	uint16_t peer_port;
+	uint16_t client_port;
+
+	bool operator<(const PeerInformation &o) const {
+		return (address < o.address) &&
+		       (peer_port < o.peer_port) &&
+		       (client_port < o.client_port);
+	}
 };
 
 static inline void to_json(json& j, const PeerInformation& p) {
 	j = json{
 		{"address", p.address},
-		{"port", p.port}
+		{"peer_port", p.peer_port},
+		{"client_port", p.client_port}
 	};
 }
 
 static inline void from_json(const json& j, PeerInformation& p) {
 	j.at("address").get_to(p.address);
-	j.at("port").get_to(p.port);
+	j.at("peer_port").get_to(p.peer_port);
+	j.at("client_port").get_to(p.client_port);
 }
 
 #define INSERT_CONFIG(name, type) { #name, type, &name }
