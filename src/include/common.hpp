@@ -84,9 +84,20 @@ struct PeerInformation {
 	uint16_t client_port;
 
 	bool operator<(const PeerInformation &o) const {
-		return (address < o.address) &&
-		       (peer_port < o.peer_port) &&
+		return (address < o.address) ||
+		       (peer_port < o.peer_port) ||
 		       (client_port < o.client_port);
+	}
+
+	bool operator==(const PeerInformation &o) const {
+		return (address == o.address) &&
+		       (peer_port == o.peer_port) &&
+		       (client_port == o.client_port);
+	}
+
+	std::string to_string() const {
+		return "PeerInformation{" + address + " p: " + std::to_string(peer_port)
+		       + " c: " + std::to_string(client_port) + "}";
 	}
 };
 

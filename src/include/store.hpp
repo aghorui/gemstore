@@ -160,7 +160,12 @@ struct Store {
 	/* GLOBAL_WRITE_LOCK? */
 	/* Would it be possible to do simultaneous writes? */
 	std::mutex vmap_lock;
+
+#ifdef DUMMY_IMPLEMENTATION
+	ValueMap vmap = json::object();
+#else
 	ValueMap vmap;
+#endif
 
 	bool contains(const Key &u);
 	Value get(const Key &u);

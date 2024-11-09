@@ -265,8 +265,8 @@ struct ClientQueryError : public std::runtime_error {
 
 struct Client {
 	String server_address;
-	uint16_t client_port;
-	uint16_t peer_port;
+	uint64_t client_port;
+	uint64_t peer_port;
 	httplib::Client client;
 	httplib::Client peer_client;
 
@@ -277,11 +277,12 @@ struct Client {
 	Config peer_get_config();
 
 	bool should_sync();
-	SyncData peer_get_sync_changeset();
+	SyncData peer_get_sync_changeset(uint peer_port_outgoing, uint client_port_outgoing);
 
 	Client(std::string url = "127.0.0.1",
-	       int peer_port = GEM_DEFAULT_PEER_PORT,
-	       int client_port = GEM_DEFAULT_CLIENT_PORT):
+	       uint64_t peer_port = GEM_DEFAULT_PEER_PORT,
+	       uint64_t client_port = GEM_DEFAULT_CLIENT_PORT):
+		client_port(client_port), peer_port(peer_port),
 		client(url, client_port), peer_client(url, peer_port) {}
 };
 

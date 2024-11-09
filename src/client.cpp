@@ -38,7 +38,7 @@ struct ServerInfo {
 
 	void print() {
 		std::cout << "Server Info: " << address << " peer: " << peer_port
-		          << "client: " << client_port << std::endl;
+		          << " client: " << client_port << std::endl;
 	}
 };
 
