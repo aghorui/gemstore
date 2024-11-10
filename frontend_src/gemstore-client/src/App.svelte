@@ -1,47 +1,50 @@
 <script lang="ts">
-  import svelteLogo from './assets/svelte.svg'
-  import viteLogo from '/vite.svg'
-  import Counter from './lib/Counter.svelte'
+	import Dumper from "./lib/Dumper.svelte";
+	import GetValue from "./lib/GetValue.svelte";
+	import SetValue from "./lib/SetValue.svelte";
+	let numDumpers: number = $state(1)
 </script>
 
 <main>
-  <div>
-    <a href="https://vite.dev" target="_blank" rel="noreferrer">
-      <img src={viteLogo} class="logo" alt="Vite Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
-    </a>
-  </div>
-  <h1>Vite + Svelte</h1>
 
-  <div class="card">
-    <Counter />
-  </div>
+<div class="container">
 
-  <p>
-    Check out <a href="https://github.com/sveltejs/kit#readme" target="_blank" rel="noreferrer">SvelteKit</a>, the official Svelte app framework powered by Vite!
-  </p>
+<div class="header-title">
+<span class="linear-text-gradient"> Gemstore </span> Testing Webclient
+</div>
 
-  <p class="read-the-docs">
-    Click on the Vite and Svelte logos to learn more
-  </p>
+<div class="header-rule"> </div>
+
+<div class="filter-body">
+	<h1>Dumpers</h1>
+	<div class="box">
+		<div class="inputelem">
+			<button onclick={() => numDumpers += 1}>Add</button>
+		</div>
+		<div class="inputelem">
+			<button onclick={() => numDumpers = 1}>Clear</button>
+		</div>
+	</div>
+
+	{#each {length: numDumpers} as _, i}
+		<div style:height="10px"></div>
+		<Dumper />
+	{/each}
+
+
+	<div style:height="40px"></div>
+	<h1>Get a Value</h1>
+	<GetValue />
+
+	<div style:height="40px"></div>
+	<h1>Set a Value</h1>
+	<SetValue />
+</div>
+
+</div>
+
 </main>
 
 <style>
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
-  }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
-  }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
-  }
-  .read-the-docs {
-    color: #888;
-  }
+
 </style>

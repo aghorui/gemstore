@@ -4,7 +4,8 @@
     "max_concurrency": 30,
     "max_server_connections": 20,
     "peers": [
-        { "address": "127.0.0.1", "peer_port": 5095, "client_port": 5096 }
+        { "address": "127.0.0.1", "peer_port": 5095, "client_port": 5096 },
+        { "address": "127.0.0.1", "peer_port": 6095, "client_port": 6096 }
     ],
     "server_listener_port": 4095
 }

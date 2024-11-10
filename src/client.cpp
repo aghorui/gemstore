@@ -78,8 +78,8 @@ int main(int argc, char **argv) {
 		exit(0);
 	}
 
-	std::cerr << "argc is: " << argc << std::endl
-	          << ">>> " << SERVINFO_2_OFFSET + 3 + 1 << std::endl;
+	// std::cerr << "argc is: " << argc << std::endl
+	//           << ">>> " << SERVINFO_2_OFFSET + 3 + 1 << std::endl;
 
 	ServerInfo s;
 

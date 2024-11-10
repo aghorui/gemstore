@@ -97,7 +97,7 @@ void sync_worker(gem::Server &server) {
 			for (auto &p : server.peer_list) {
 				try {
 					Client peer_client(p.address, p.peer_port, p.client_port);
-					log() << "Pinging " << p.address << ":" << p.peer_port;
+					//log() << "Pinging " << p.address << ":" << p.peer_port;
 					SyncData s = peer_client.peer_get_sync_changeset(server.peer_port, server.client_port);
 
 					if (s.values.size() > 0) {
@@ -144,7 +144,7 @@ void root_handler(gem::Server &, const httplib::Request &req, httplib::Response 
 }
 
 void sync_post_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
-	print_request(req);
+	//print_request(req);
 	PeerInformation p;
 
 	try {
@@ -306,23 +306,41 @@ void exception_handler(const httplib::Request &req, httplib::Response &resp, std
 	}
 }
 
+void enable_cors(const httplib::Request &req, httplib::Response &resp) {
+	resp.set_header("Access-Control-Allow-Origin", req.get_header_value("Origin"));
+	resp.set_header("Allow", "GET, POST, HEAD, DELETE");
+	resp.set_header("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, Accept, Origin, Authorization");
+	resp.set_header("Access-Control-Allow-Methods", "GET, POST, HEAD, DELETE");
+}
+
 #define HANDLER(__handler_func) \
 	([&](const httplib::Request &req, httplib::Response &resp) { \
+		enable_cors(req, resp); \
 		__handler_func((*this), req, resp); \
 	})
 
 void Server::start() {
 	peer_server.Get("/", HANDLER(root_handler));
 	peer_server.Post("/sync", HANDLER(sync_post_handler));
+
 	peer_server.Get("/config", HANDLER(config_get_handler));
+	// peer_server.Options("/config", HANDLER(enable_cors));
+
 	peer_server.set_exception_handler(exception_handler);
 
 	client_server.Get("/", HANDLER(root_handler));
-	client_server.Get("/query", HANDLER(client_query_get_handler));
-	client_server.Post("/set", HANDLER(client_query_set_handler));
-	client_server.Get("/dump", HANDLER(client_dump_handler));
-	client_server.set_exception_handler(exception_handler);
+	// client_server.Options("/", HANDLER(enable_cors));
 
+	client_server.Get("/query", HANDLER(client_query_get_handler));
+	// client_server.Options("/query", HANDLER(enable_cors));
+
+	client_server.Post("/set", HANDLER(client_query_set_handler));
+	client_server.Options("/set", enable_cors);
+
+	client_server.Get("/dump", HANDLER(client_dump_handler));
+	// client_server.Options("/dump", HANDLER(enable_cors));
+
+	client_server.set_exception_handler(exception_handler);
 
 	std::thread peer_server_thread([&]{
 		log() << "Starting peer server at http://127.0.0.1:" << peer_port;
