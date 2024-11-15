@@ -5,6 +5,7 @@
 #ifndef GEM_NETWORKING_HPP
 #define GEM_NETWORKING_HPP
 
+#include <condition_variable>
 #include <cstdint>
 #include <mutex>
 #include <queue>
@@ -42,28 +43,21 @@ static inline void from_json(const json& j, RootData& p) {
 	j.at("connected_peers").get_to(p.connected_peers);
 }
 
-struct SyncStatusData {
-	std::string hash;
-	uint64_t last;
-	uint64_t stamp;
-};
-
 struct SyncData {
+	PeerInformation peerinfo;
 	Vector<KeyValuePair> values;
 };
 
-static inline void to_json(json& j, const SyncStatusData& p) {
+static inline void to_json(json& j, const SyncData& p) {
 	j = json{
-		{ "hash",  p.hash },
-		{ "last",  p.last },
-		{ "stamp", p.stamp }
+		{ "peerinfo", p.peerinfo },
+		{ "values", p.values }
 	};
 }
 
-static inline void from_json(const json& j, SyncStatusData& p) {
-	j.at("hash").get_to(p.hash);
-	j.at("last").get_to(p.last);
-	j.at("stamp").get_to(p.stamp);
+static inline void from_json(const json& j, SyncData& p) {
+	j.at("peerinfo").get_to(p.peerinfo);
+	j.at("values").get_to(p.values);
 }
 
 struct KeyValueData {
@@ -117,77 +111,6 @@ struct QueryResult {
 /******************************************************************************/
 
 struct Server {
-/*
-	template<typename ContextT, void (*thread_func)(ContextT &)>
-	static void *worker_thread_func(void *arg) {
-		ContextT *context = (ContextT *) arg;
-		thread_func(context);
-		return NULL;
-	}
-
-	template<typename ContextT, void (*thread_func)(ContextT &)>
-	struct WorkerThread {
-		pthread_t thread;
-		ContextT context;
-
-		void start() {
-			pthread_create(&thread, NULL,
-				worker_thread_func<ContextT, thread_func>,
-				&context);
-		}
-
-		void stop() {
-			context.done = true;
-			pthread_join(thread, NULL);
-		}
-
-		WorkerThread(ContextT ctx): context(ctx) {}
-	};
-
-	struct WorkerThreadContext {
-		int id = -1;
-		bool done = false;
-		Store &store;
-		Queue<Request> &queue;
-		pthread_mutex_t &queue_lock;
-
-		WorkerThreadContext(
-			Store &store,
-			Queue<Request> &queue,
-			pthread_mutex_t &queue_lock):
-			store(store),
-			queue(queue),
-			queue_lock(queue_lock) {}
-	};
-
-	struct ListenerThreadContext {
-		int id = -1;
-		uint16_t port;
-		bool done = false;
-		Set<Connection> &connections;
-		Queue<Request> &queue;
-		pthread_mutex_t &queue_lock;
-
-		ListenerThreadContext(
-			Set<Connection> &connections,
-			Queue<Request> &queue,
-			pthread_mutex_t &queue_lock):
-			connections(connections),
-			queue(queue),
-			queue_lock(queue_lock) {}
-	};
-
-	// static void peer_worker_func(WorkerThreadContext &ctx);
-	// static void client_worker_func(WorkerThreadContext &ctx);
-	static void peer_listener_func(ListenerThreadContext &ctx);
-	// static void client_listener_func(ListenerThreadContext &ctx);
-
-	using PeerListenerThread = WorkerThread<ListenerThreadContext, peer_listener_func>;
-	// using ClientListenerThread = WorkerThread<ListenerThreadContext, client_listener_func>;
-	// using ClientWorkerThread = WorkerThread<WorkerThreadContext, client_worker_func>;
-	// using PeerWorkerThread = WorkerThread<WorkerThreadContext, peer_worker_func>;
-*/
-
 	Config &config;
 
 	// All disk/mem i/o is done through this store interface.
@@ -207,25 +130,20 @@ struct Server {
 
 	using PushQueue = Vector<Key>;
 
-	std::mutex push_queues_lock;
-	Map<PeerInformation, PushQueue> push_queues;
+	//Map<PeerInformation, PushQueue> push_queues;
 
-/*
-	// Peer Request Queue.
-	Queue<Request> peer_queue;
-	pthread_mutex_t peer_queue_lock;
+	struct PeerState {
+		PushQueue queue = {};
+		bool accessed_once = false;
+		int retries = 0;
+	};
 
+	std::mutex peer_state_lock;
+	Map<PeerInformation, PeerState> peers;
 
-	// Client Request Queue.
-	Queue<Request> client_queue;
-	pthread_mutex_t client_queue_lock;
-
-	// ClientListenerThread client_listener;
-	PeerListenerThread peer_listener;
-
-	//Vector<ClientWorkerThread> client_worker_threads;
-	//Vector<PeerWorkerThread> peer_worker_threads;
-*/
+	std::condition_variable broadcast_queue_cond;
+	// std::mutex broadcast_queue_lock;
+	Queue<PeerInformation> broadcast_queue;
 
 	void start();
 	void close();
@@ -239,17 +157,11 @@ struct Server {
 		concurrency(config.max_concurrency),
 		peer_list(config.peers.begin(), config.peers.end()),
 		peer_port(config.server_listener_port),
-		client_port(config.client_listener_port)
-/*		client_listener(ListenerThreadContext(
-			client_connections,
-			client_queue,
-			client_queue_lock
-		)),
-		peer_listener(ListenerThreadContext(
-			peer_connections,
-			peer_queue,
-			peer_queue_lock
-		))*/ {}
+		client_port(config.client_listener_port) {
+			for (auto pi : peer_list) {
+				peers[pi] = PeerState();
+			}
+		}
 };
 
 struct ClientQueryError : public std::runtime_error {
@@ -278,6 +190,7 @@ struct Client {
 
 	bool should_sync();
 	SyncData peer_get_sync_changeset(uint peer_port_outgoing, uint client_port_outgoing);
+	bool peer_send_changeset(SyncData &s);
 
 	Client(std::string url = "127.0.0.1",
 	       uint64_t peer_port = GEM_DEFAULT_PEER_PORT,

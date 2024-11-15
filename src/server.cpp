@@ -16,7 +16,6 @@ void terminate_handler(int) {
 
 int main(int argc, char **argv) {
 	gem::Config cfg;
-	gem::Store store;
 
 	if (argc >= 2) {
 		if (strcmp("-h", argv[1]) == 0 ||
@@ -84,6 +83,8 @@ int main(int argc, char **argv) {
 		}
 	}
 
+
+	gem::Store store(cfg);
 	gem::Server server(cfg, store);
 	server_ptr = &server;
 

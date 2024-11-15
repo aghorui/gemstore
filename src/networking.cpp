@@ -1,4 +1,5 @@
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
@@ -86,10 +87,8 @@ struct History {
 // milliseconds
 #define POLL_DELAY 500
 
-void sync_worker(gem::Server &server) {
+void sync_worker_poll(gem::Server &server) {
 	// ping each server
-	// if stamp is not equal to current, send sync request
-	// merge data
 
 	while (true) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(POLL_DELAY));
@@ -108,20 +107,20 @@ void sync_worker(gem::Server &server) {
 						server.store.bulk_update(s.values);
 
 						// Mark dirty to other peers
-						server.push_queues_lock.lock();
+						server.peer_state_lock.lock();
 
-						for (auto &queue : server.push_queues) {
-							log() << queue.first.to_string() << " " << p.to_string();
-							if (queue.first == p) {
+						for (auto &peer : server.peers) {
+							log() << peer.first.to_string() << " " << p.to_string();
+							if (peer.first == p) {
 								log() << "EQUAL FOUND, Skipping";
 								continue;
 							}
 							for (auto &k : s.values) {
-								queue.second.push_back(k.key);
+								peer.second.queue.push_back(k.key);
 							}
 						}
 
-						server.push_queues_lock.unlock();
+						server.peer_state_lock.unlock();
 					}
 
 
@@ -133,6 +132,36 @@ void sync_worker(gem::Server &server) {
 	}
 }
 
+void sync_worker_broadcast(gem::Server &server) {
+	// broadcast to each server
+
+	while (true) {
+		// std::this_thread::sleep_for(std::chrono::milliseconds(POLL_DELAY));
+		std::unique_lock<std::mutex> peer_state_unique_lock(server.peer_state_lock);
+
+		server.broadcast_queue_cond.wait(
+			peer_state_unique_lock,
+			[&] { return server.broadcast_queue.size() > 0; });
+
+		PeerInformation p = server.broadcast_queue.front();
+		server.broadcast_queue.pop_front();
+
+		SyncData s;
+		s.peerinfo.address = "";
+		s.peerinfo.peer_port = server.peer_port;
+		s.peerinfo.client_port = server.client_port;
+
+		s.values = server.store.bulk_get(server.peers[p].queue);
+
+		Client client(p.address, p.peer_port, p.client_port);
+		try {
+			client.peer_send_changeset(s);
+		} catch (ClientQueryError &e) {
+			log() << "Broadcast Error: " << e.what();
+		}
+	}
+}
+
 /**** SERVER IMPLEMENTATION ***************************************************/
 
 void root_handler(gem::Server &, const httplib::Request &req, httplib::Response &resp) {
@@ -141,6 +170,45 @@ void root_handler(gem::Server &, const httplib::Request &req, httplib::Response 
 	r.nickname = "acd";
 	r.connected_peers = 20;
 	resp.set_content(json(r).dump(), "application/json");
+}
+
+void broadcast_sync_post_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
+	SyncData s;
+
+	try {
+		s = json::parse(req.body);
+	} catch (json::parse_error &e) {
+		resp.status = httplib::BadRequest_400;
+		resp.set_content(err_msg("malformed request"), "application/json");
+		return;
+	}
+
+	PeerInformation sender_peer;
+	sender_peer.address = req.local_addr;
+	sender_peer.peer_port = s.peerinfo.peer_port;
+	sender_peer.client_port = s.peerinfo.client_port;
+
+	server.store.bulk_update(s.values);
+
+	server.peer_state_lock.lock();
+
+	for (auto &peer : server.peers) {
+		log() << peer.first.to_string() << " " << sender_peer.to_string();
+		if (peer.first == sender_peer) {
+			log() << "EQUAL FOUND, Skipping";
+			continue;
+		}
+		for (auto &k : s.values) {
+			peer.second.queue.push_back(k.key);
+		}
+
+		server.broadcast_queue.push_back(peer.first);
+	}
+
+	server.peer_state_lock.unlock();
+	server.broadcast_queue_cond.notify_all();
+
+	resp.status = httplib::OK_200;
 }
 
 void sync_post_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
@@ -170,27 +238,30 @@ void sync_post_handler(gem::Server &server, const httplib::Request &req, httplib
 		force_resync = true;
 	}
 
-	server.push_queues_lock.lock();
+	server.peer_state_lock.lock();
 
-	if (server.push_queues.count(p) < 1 || force_resync) {
+	if (server.peers.count(p) < 1) {
+		server.peers[p] = Server::PeerState();
+	}
+
+	if (server.peers[p].accessed_once == false || force_resync) {
 		// new request
-		server.push_queues[p] = {};
+		server.peers[p].accessed_once = true;
 		resp.status = httplib::OK_200;
 		resp.set_header("Gem-Force-Resync", "true");
 		resp.set_content(server.store.dump().dump(), "application/json");
 	} else {
-		json changeset = server.store.bulk_get(server.push_queues[p]);
+		SyncData s;
+		s.peerinfo.address = "";
+		s.peerinfo.peer_port = server.peer_port;
+		s.peerinfo.client_port = server.client_port;
+		s.values = server.store.bulk_get(server.peers[p].queue);
 		resp.status = httplib::OK_200;
-		if (changeset.size() == 0) {
-			resp.set_content("[]", "application/json");
-		} else {
-			resp.set_content(changeset.dump(), "application/json");
-		}
-
-		server.push_queues[p].clear();
+		resp.set_content(json(s).dump(), "application/json");
+		server.peers[p].queue.clear();
 	}
 
-	server.push_queues_lock.unlock();
+	server.peer_state_lock.unlock();
 }
 
 void config_get_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
@@ -272,13 +343,13 @@ void client_query_set_handler(gem::Server &server, const httplib::Request &req, 
 		return;
 	}
 
-	server.push_queues_lock.lock();
+	server.peer_state_lock.lock();
 
-	for (auto &queue : server.push_queues) {
-		queue.second.push_back(k.key);
+	for (auto &peer : server.peers) {
+		peer.second.queue.push_back(k.key);
 	}
 
-	server.push_queues_lock.unlock();
+	server.peer_state_lock.unlock();
 
 	resp.status = httplib::OK_200;
 }
@@ -322,6 +393,10 @@ void enable_cors(const httplib::Request &req, httplib::Response &resp) {
 void Server::start() {
 	peer_server.Get("/", HANDLER(root_handler));
 	peer_server.Post("/sync", HANDLER(sync_post_handler));
+
+	if (config.sync_mode == SyncMode::BROADCAST) {
+		peer_server.Post("/broadcast_sync", HANDLER(sync_post_handler));
+	}
 
 	peer_server.Get("/config", HANDLER(config_get_handler));
 	// peer_server.Options("/config", HANDLER(enable_cors));
@@ -373,7 +448,14 @@ void Server::start() {
 	std::thread sync_thread;
 
 	if (peer_list.size() > 0) {
-		sync_thread = std::thread([&] { sync_worker(*this); });
+		if (config.sync_mode == SyncMode::POLL) {
+			sync_thread = std::thread([&] { sync_worker_poll(*this); });
+		} else if (config.sync_mode == SyncMode::BROADCAST) {
+			sync_thread = std::thread([&] { sync_worker_broadcast(*this); });
+		} else {
+			log() << "Sync mode is neither poll or broadcast. Illegal state";
+			exit(1);
+		}
 	}
 
 	peer_server_thread.join();
@@ -415,8 +497,8 @@ bool Client::set_value(const std::string &key, const Value &value) {
 	KeyValueData k;
 	k.key = key;
 	k.value = value.to_json_value();
-	log() << "Client Config: " << client.host() << " " << client.port();
-	log() << "Peer Client Config: " << peer_client.host() << " " << peer_client.port();
+	// log() << "Client Config: " << client.host() << " " << client.port();
+	// log() << "Peer Client Config: " << peer_client.host() << " " << peer_client.port();
 	auto res = client.Post("/set", json(k).dump(), "application/json");
 
 	if (!res) {
@@ -479,10 +561,24 @@ SyncData Client::peer_get_sync_changeset(uint peer_port_outgoing, uint client_po
 			s.values.push_back(kv);
 		}
 	} else {
-		s.values = json::parse(res->body);
+		s = json::parse(res->body);
 	}
 
 	return s;
+}
+
+bool Client::peer_send_changeset(SyncData &s) {
+	auto res = peer_client.Post("/broadcast_sync",json(s).dump(), "application/json");
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	return true;
 }
 
 json Client::dump() {

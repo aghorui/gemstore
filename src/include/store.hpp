@@ -115,20 +115,6 @@ static inline void from_json(const json& j, Value& v) {
 		v.storage.data = arr;
 	}
 }*/
-
-enum class MergeAttributes {
-	NUM_NONE,
-	NUM_MIN,
-	NUM_MAX,
-	NUM_AVERAGE,
-	STR_NONE,
-	STR_CONCAT,
-	ARR_NONE,
-	ARR_CONCAT
-};
-
-using Key = String;
-
 struct KeyValuePair {
 	Key key;
 	Value value;
@@ -160,6 +146,8 @@ struct Store {
 	/* GLOBAL_WRITE_LOCK? */
 	/* Would it be possible to do simultaneous writes? */
 	std::mutex vmap_lock;
+	Map<Key, MergeAttributes> merge_attributes;
+	Config &cfg;
 
 #ifdef DUMMY_IMPLEMENTATION
 	ValueMap vmap = json::object();
@@ -170,9 +158,11 @@ struct Store {
 	bool contains(const Key &u);
 	Value get(const Key &u);
 	Value get_pattern(const Key &u);
-	bool set(const Key &u, Value &v);
+	bool set(const Key &u, const Value &v);
 	bool del(const Key &u);
 	bool del_pattern(const Key &u);
+	bool merge_and_set(const Key &u, const Value &v);
+	bool set_merge_attributes(Vector<MergeAttributeEntry> attrs);
 
 	// template<typename T>
 	// json bulk_get(T begin, T end);
@@ -184,6 +174,10 @@ struct Store {
 		const Key u;
 		KeyNotFoundException(const Key u): std::invalid_argument(u) {}
 	};
+
+	Store(Config &cfg): cfg(cfg) {
+		set_merge_attributes(cfg.merge_attributes);
+	}
 };
 
 };

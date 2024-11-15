@@ -38,7 +38,7 @@ Value Store::get_pattern(const Key &) {
 	assert(0 && "not implemented");
 }
 
-bool Store::set(const Key &u, Value &v) {
+bool Store::set(const Key &u, const Value &v) {
 	vmap_lock.lock();
 	vmap[u] = v.storage;
 	vmap_lock.unlock();
@@ -82,6 +82,15 @@ bool Store::bulk_update(Vector<KeyValuePair> &kvs) {
 	return true;
 }
 
+
+bool Store::set_merge_attributes(Vector<MergeAttributeEntry> attrs) {
+	for (auto &attr : attrs) {
+		merge_attributes[attr.key] = attr.attr;
+	}
+
+	return true;
+}
+
 json Store::dump() {
 	return vmap;
 }
@@ -92,6 +101,127 @@ Value value_from_json(const json &j) {
 	v.storage = j;
 	return v;
 }
+
+#define CHECK_TYPE(x, m, t) if ((x).type != (t)) { \
+	log() << "Type mismatch between merge attribute (" << merge_attr_to_str.at(m) \
+	      <<  ") and local value: " << x.storage; \
+	return false; \
+}
+
+#define CHECK_TYPE2(x, m, t1, t2) if (((x).type != (t1)) && ((x).type != (t2))) { \
+	log() << "Type mismatch between merge attribute (" << merge_attr_to_str.at(m) \
+	      << ") and local value: " << x.storage; \
+	return false; \
+}
+
+bool Store::merge_and_set(const Key &u, const Value &v) {
+	if (!contains(u)) {
+		set(u, v);
+	}
+
+	auto attr = merge_attributes.find(u);
+
+	if (attr == merge_attributes.end()) {
+		set(u, v);
+	}
+
+	Value v_local = get(u);
+
+	if (v_local.type != v.type) {
+		log() << "Type mismatch between remote ('" << v.storage << "')"
+		      << " and local ('" << v_local.storage << "') " << "Ignoring";
+		return false;
+	}
+
+	switch (attr->second) {
+	case NUM_NONE:
+		CHECK_TYPE2(v, attr->second, ValueType::Int, ValueType::Float);
+		set(u, v);
+		break;
+
+	case NUM_MIN:
+		CHECK_TYPE2(v, attr->second, ValueType::Int, ValueType::Float);
+		if (v.storage < v_local.storage) {
+			set(u, v);
+		}
+		break;
+
+	case NUM_MAX:
+		CHECK_TYPE2(v, attr->second, ValueType::Int, ValueType::Float);
+		if (v.storage > v_local.storage) {
+			set(u, v);
+		}
+		break;
+
+	case NUM_AVERAGE:
+		CHECK_TYPE2(v, attr->second, ValueType::Int, ValueType::Float);
+		{ // Need to put this in scope, otherwise we get jump bypasses
+		  // variable initialization
+			float avg_val =
+				v.storage.template get<float>() +
+				v_local.storage.template get<float>();
+			avg_val = avg_val / 2;
+			Value set_v;
+			set_v.type = ValueType::Float;
+			set_v.storage = json(avg_val);
+			set(u, set_v);
+		}
+		break;
+
+	case STR_NONE:
+		CHECK_TYPE(v, attr->second, ValueType::String);
+		set(u, v);
+		break;
+
+	case STR_CONCAT:
+		CHECK_TYPE(v, attr->second, ValueType::String);
+		{ // Need to put this in scope, otherwise we get jump bypasses
+		  // variable initialization
+			std::string concat_val =
+				v_local.storage.template get<std::string>() +
+				v.storage.template get<std::string>();
+			Value set_v;
+			set_v.type = ValueType::String;
+			set_v.storage = json(concat_val);
+			set(u, set_v);
+		}
+		break;
+
+	case ARR_NONE:
+		CHECK_TYPE(v, attr->second, ValueType::Array);
+		set(u, v);
+		break;
+
+	case ARR_CONCAT:
+		CHECK_TYPE(v, attr->second, ValueType::Array);
+		{ // Need to put this in scope, otherwise we get jump bypasses
+		  // variable initialization
+			std::string concat_val =
+				v.storage.template get<std::string>() +
+				v_local.storage.template get<std::string>();
+			Value set_v;
+			set_v.type = ValueType::String;
+			set_v.storage = json(concat_val);
+			set(u, set_v);
+		}
+		break;
+
+	case ARR_UNION:
+		CHECK_TYPE(v, attr->second, ValueType::Array);
+		{
+			Set<json> union_set(v.storage.begin(), v.storage.end());
+			union_set.insert(v_local.storage.begin(), v_local.storage.end());
+			Value set_v;
+			set_v.type = ValueType::Array;
+			set_v.storage = json(union_set);
+			set(u, set_v);
+		}
+		break;
+	}
+	return true;
+}
+
+
 
 #else
 
