@@ -1,0 +1,15 @@
+{
+    "client_listener_port": 5096,
+    "max_client_connections": 128,
+    "max_concurrency": 30,
+    "max_server_connections": 20,
+    "merge_attributes": [
+        { "key": "ul", "attr": "arr_union" }
+    ],
+    "peer_retention": 0.5,
+    "peers": [
+        { "address": "127.0.0.1", "peer_port": 4095, "client_port": 4096 }
+    ],
+    "server_listener_port": 5095,
+    "sync_mode": "broadcast"
+}

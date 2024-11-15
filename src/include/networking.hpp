@@ -136,6 +136,8 @@ struct Server {
 		PushQueue queue = {};
 		bool accessed_once = false;
 		int retries = 0;
+		uint64_t last_pinged = 0;
+		uint64_t last_updated = 0;
 	};
 
 	std::mutex peer_state_lock;

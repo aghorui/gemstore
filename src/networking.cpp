@@ -86,6 +86,8 @@ struct History {
 
 // milliseconds
 #define POLL_DELAY 500
+#define BROADCAST_POLL_DELAY 5000
+#define BROADCAST_POLL_THRESHOLD 10 * 1000
 
 void sync_worker_poll(gem::Server &server) {
 	// ping each server
@@ -101,7 +103,7 @@ void sync_worker_poll(gem::Server &server) {
 
 					if (s.values.size() > 0) {
 						log() << "Update of size " << s.values.size() << " from "
-						      << p.address << ":" << p.peer_port;
+						      << p.to_string();
 
 						// Update self
 						server.store.bulk_update(s.values);
@@ -132,11 +134,72 @@ void sync_worker_poll(gem::Server &server) {
 	}
 }
 
-void sync_worker_broadcast(gem::Server &server) {
-	// broadcast to each server
+void sync_worker_poll_broadcast(gem::Server &server) {
+	// ping each server
 
 	while (true) {
+			for (auto &p : server.peer_list) {
+				server.peer_state_lock.lock();
+				uint64_t current_time = get_millisecond_timestamp();
+				if (!((current_time - server.peers[p].last_pinged) > BROADCAST_POLL_THRESHOLD &&
+					(current_time - server.peers[p].last_updated) > BROADCAST_POLL_THRESHOLD)) {
+					server.peer_state_lock.unlock();
+					continue;
+				}
+				server.peer_state_lock.unlock();
+
+				try {
+					log() << "Timeout expired. Pinging " << p.to_string();
+					Client peer_client(p.address, p.peer_port, p.client_port);
+					//log() << "Pinging " << p.address << ":" << p.peer_port;
+					SyncData s = peer_client.peer_get_sync_changeset(server.peer_port, server.client_port);
+
+					server.peer_state_lock.lock();
+					server.peers[p].last_pinged = get_millisecond_timestamp();
+					server.peer_state_lock.unlock();
+
+					if (s.values.size() > 0) {
+						log() << "Update of size " << s.values.size() << " from "
+						      << p.to_string();
+
+						// Update self
+						server.store.bulk_update(s.values);
+
+						// Mark dirty to other peers
+						server.peer_state_lock.lock();
+
+						for (auto &peer : server.peers) {
+							log() << peer.first.to_string() << " " << p.to_string();
+							if (peer.first == p) {
+								log() << "EQUAL FOUND, Skipping";
+								continue;
+							}
+							for (auto &k : s.values) {
+								peer.second.queue.push_back(k.key);
+							}
+						}
+
+						server.peers[p].last_updated = get_millisecond_timestamp();
+						server.peer_state_lock.unlock();
+					}
+
+
+				} catch (std::exception &e) {
+					log() << "Error on pinging "
+					      << p.address << ":" << p.peer_port << ": " << e.what();
+				}
+			}
+
+			std::this_thread::sleep_for(std::chrono::milliseconds(BROADCAST_POLL_DELAY));
+	}
+}
+
+void sync_worker_broadcast(gem::Server &server) {
+	// broadcast to each server
+	log() << "Sync broadcast worker started";
+	while (true) {
 		// std::this_thread::sleep_for(std::chrono::milliseconds(POLL_DELAY));
+		log() << "Waiting on lock";
 		std::unique_lock<std::mutex> peer_state_unique_lock(server.peer_state_lock);
 
 		server.broadcast_queue_cond.wait(
@@ -155,6 +218,7 @@ void sync_worker_broadcast(gem::Server &server) {
 
 		Client client(p.address, p.peer_port, p.client_port);
 		try {
+			log() << "Broadcasting to: " << p.to_string();
 			client.peer_send_changeset(s);
 		} catch (ClientQueryError &e) {
 			log() << "Broadcast Error: " << e.what();
@@ -347,9 +411,11 @@ void client_query_set_handler(gem::Server &server, const httplib::Request &req, 
 
 	for (auto &peer : server.peers) {
 		peer.second.queue.push_back(k.key);
+		server.broadcast_queue.push_back(peer.first);
 	}
 
 	server.peer_state_lock.unlock();
+	server.broadcast_queue_cond.notify_all();
 
 	resp.status = httplib::OK_200;
 }
@@ -395,7 +461,7 @@ void Server::start() {
 	peer_server.Post("/sync", HANDLER(sync_post_handler));
 
 	if (config.sync_mode == SyncMode::BROADCAST) {
-		peer_server.Post("/broadcast_sync", HANDLER(sync_post_handler));
+		peer_server.Post("/broadcast_sync", HANDLER(broadcast_sync_post_handler));
 	}
 
 	peer_server.Get("/config", HANDLER(config_get_handler));
@@ -446,12 +512,14 @@ void Server::start() {
 	});
 
 	std::thread sync_thread;
+	std::thread sync_broadcast_poll_thread;
 
 	if (peer_list.size() > 0) {
 		if (config.sync_mode == SyncMode::POLL) {
 			sync_thread = std::thread([&] { sync_worker_poll(*this); });
 		} else if (config.sync_mode == SyncMode::BROADCAST) {
 			sync_thread = std::thread([&] { sync_worker_broadcast(*this); });
+			sync_broadcast_poll_thread = std::thread([&] { sync_worker_poll_broadcast(*this); });
 		} else {
 			log() << "Sync mode is neither poll or broadcast. Illegal state";
 			exit(1);

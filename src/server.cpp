@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-
+	std::cerr << gem::json(cfg).dump(4) << std::endl;
 	gem::Store store(cfg);
 	gem::Server server(cfg, store);
 	server_ptr = &server;

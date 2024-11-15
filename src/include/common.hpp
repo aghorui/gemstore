@@ -4,9 +4,7 @@
 
 #ifndef GEM_COMMON_HPP
 #define GEM_COMMON_HPP
-
-#include "json.hpp"
-#include "httplib.h"
+#include <chrono>
 #include <deque>
 #include <fstream>
 #include <map>
@@ -16,6 +14,9 @@
 #include <string>
 #include <iostream>
 #include <unordered_map>
+
+#include "json.hpp"
+#include "httplib.h"
 
 #define GEMSTORE_VERSION "0.2"
 #define GEMSTORE_NAME "gemstore"
@@ -130,11 +131,25 @@ enum class SyncMode {
                            (((x) == "broadcast") ? SyncMode::BROADCAST : SyncMode::POLL))
 
 static inline void to_json(json& j, const SyncMode& p) {
-	j = json{SYNCMODE_TO_STR(p)};
+	std::cerr << "SYNCMODE VALUE to json: " << SYNCMODE_TO_STR(p) ;
+	if (p == SyncMode::POLL) {
+		j = "poll";
+	} else if (p == SyncMode::BROADCAST) {
+		j = "broadcast";
+	} else {
+		throw std::invalid_argument("Sync mode is neither 'poll' or 'broadcast'");
+	}
 }
 
 static inline void from_json(const json& j, SyncMode& p) {
-	p = STR_TO_SYNCMODE(j);
+	std::cerr << "SYNCMODE VALUE from json: " << j.dump();
+	if (j == "poll") {
+		p = SyncMode::POLL;
+	} else if (j == "broadcast") {
+		p = SyncMode::BROADCAST;
+	} else {
+		throw std::invalid_argument("Sync mode is neither 'poll' or 'broadcast'");
+	}
 }
 
 enum MergeAttributes {
@@ -220,9 +235,10 @@ static inline void to_json(json& j, const Config& p) {
 		{ "max_server_connections", p.max_server_connections     },
 		{ "max_client_connections", p.max_client_connections     },
 		{ "max_concurrency",        p.max_concurrency            },
-		{ "sync_mode",              SYNCMODE_TO_STR(p.sync_mode) },
+		{ "sync_mode",              p.sync_mode                  },
 		{ "peer_retention",         p.peer_retention             },
-		{ "peers",                  p.peers                      }
+		{ "peers",                  p.peers                      },
+		{ "merge_attributes",       p.merge_attributes           }
 	};
 }
 
@@ -233,6 +249,13 @@ static inline void from_json(const json& j, Config& p) {
 	j.at("max_client_connections").get_to(p.max_client_connections);
 	j.at("max_concurrency").get_to(p.max_concurrency);
 	j.at("peers").get_to(p.peers);
+	j.at("merge_attributes").get_to(p.merge_attributes);
+	j.at("sync_mode").get_to(p.sync_mode);
+}
+
+static inline uint64_t get_millisecond_timestamp() {
+	return std::chrono::duration_cast<std::chrono::microseconds>(
+		std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
 };

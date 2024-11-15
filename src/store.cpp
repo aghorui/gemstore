@@ -76,7 +76,7 @@ Vector<KeyValuePair> Store::bulk_get(Vector<Key> &k) {
 
 bool Store::bulk_update(Vector<KeyValuePair> &kvs) {
 	for (auto &kv : kvs) {
-		set(kv.key, kv.value);
+		merge_and_set(kv.key, kv.value);
 	}
 
 	return true;
@@ -115,13 +115,13 @@ Value value_from_json(const json &j) {
 }
 
 bool Store::merge_and_set(const Key &u, const Value &v) {
-	if (!contains(u)) {
-		set(u, v);
-	}
-
 	auto attr = merge_attributes.find(u);
 
 	if (attr == merge_attributes.end()) {
+		set(u, v);
+	}
+
+	if (!contains(u)) {
 		set(u, v);
 	}
 
