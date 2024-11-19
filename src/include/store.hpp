@@ -15,6 +15,7 @@
 #include "json.hpp"
 
 namespace gem {
+
 /**
  * @brief      Describes a type presented in a store value.
  */

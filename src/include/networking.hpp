@@ -27,8 +27,8 @@ namespace gem {
 /**** NETWORKING DATA EXCHANGE STRUCTS ****************************************/
 
 struct RootData {
-	std::string nickname;
-	uint64_t connected_peers;
+	String nickname;
+	Set<PeerInformation> connected_peers;
 };
 
 static inline void to_json(json& j, const RootData& p) {
@@ -110,6 +110,8 @@ struct QueryResult {
 
 /******************************************************************************/
 
+String get_random_name();
+
 struct Server {
 	Config &config;
 
@@ -127,6 +129,8 @@ struct Server {
 
 	uint16_t peer_port   = 4095; // Port for peer servers
 	uint16_t client_port = 4096; // Port for clients
+
+	String nickname = get_random_name();
 
 	using PushQueue = Vector<Key>;
 

@@ -100,6 +100,22 @@ blockquote {
 	color: transparent;
 }
 
+.linear-text-gradient-small {
+	background: linear-gradient(90deg,
+		rgba(128,0,128,1) 0%,
+		rgba(128,0,128,1) 27.6%,
+		rgba(249,122,6,1) 48.69%,
+		rgba(128,0,128,1) 62%,
+		rgba(128,0,128,1) 100%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	font-family: serif;
+	font-weight: 400;
+	font-style: italic;
+	margin-right:10px;
+	color: transparent;
+}
+
 .header-title {
 	background: linear-gradient(90deg, rgba(255,229,227,1) 88%, rgba(255,255,255,1) 100%);
 	font-size: 20px;

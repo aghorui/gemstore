@@ -1,5 +1,6 @@
 #include "store.hpp"
 #include <functional>
+#include <mutex>
 
 namespace gem {
 
@@ -15,15 +16,16 @@ ValueType get_type_from_json(const json &j) {
 }
 
 bool Store::contains(const Key &u) {
-	vmap_lock.lock();
+	std::lock_guard<std::mutex> l(vmap_lock);
 	bool ret = vmap.contains(u);
 	vmap_lock.unlock();
 	return ret;
 }
 
 Value Store::get(const Key &u) {
-	vmap_lock.lock();
+	std::lock_guard<std::mutex> l(vmap_lock);
 	if (vmap.count(u) < 1) {
+		vmap_lock.unlock();
 		throw KeyNotFoundException(u);
 	}
 
@@ -39,20 +41,17 @@ Value Store::get_pattern(const Key &) {
 }
 
 bool Store::set(const Key &u, const Value &v) {
-	vmap_lock.lock();
+	std::lock_guard<std::mutex> l(vmap_lock);
 	vmap[u] = v.storage;
-	vmap_lock.unlock();
 	return true;
 }
 
 bool Store::del(const Key &u) {
-	vmap_lock.lock();
+	std::lock_guard<std::mutex> l(vmap_lock);
 	if (vmap.count(u) < 1) {
-		vmap_lock.unlock();
 		return false;
 	} else {
 		vmap.erase(u);
-		vmap_lock.unlock();
 		return true;
 	}
 }

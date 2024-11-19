@@ -6,6 +6,7 @@
 #include <exception>
 #include <iomanip>
 #include <iostream>
+#include <random>
 #include <thread>
 #include "common.hpp"
 #include "httplib.h"
@@ -15,6 +16,36 @@
 
 
 namespace gem {
+
+static const Vector<String> words =  {
+	"Agate", "Alexandrite", "Amazonite", "Amber", "Ambligonite",
+	"Ametrine", "Amethyst", "Andalusite", "Apatite", "Aquamarine",
+	"Aragonite", "Axinite", "Azurite", "Barite", "Benitoite",
+	"Beryl", "Bismuth", "Bloodstone", "Bornite", "Bustamite",
+	"Carnelian", "Cerussite", "Chalcedony", "Charoite", "Chrysoberyl",
+	"Chrysocolla", "Chrysoprase", "Citrine", "Clinohumite", "Coral",
+	"Cordierite", "Covellite", "Cuprite", "Danburite", "Diamond",
+	"Dumortierite", "Emerald", "Enstatite", "Epidote", "Eudialyte",
+	"Feldspar", "Fireopal", "Fluorite", "Fuchsite", "Gahnite",
+	"Garnet", "Gaspeite", "Heliodor", "Hematite", "Hiddenite",
+	"Howlite", "Hypersthene", "Idocrase", "Iolite", "Jade",
+	"Jasper", "Kornerupine", "Kunzite", "Kyanite", "Labradorite",
+	"Lapislazuli", "Larimar", "Legrandite", "Magnesite", "Malachite",
+	"Meionite", "Moonstone", "Morganite", "Natrolite", "Obsidian",
+	"Onyx", "Opal", "Orthoclase", "Pargasite", "Peridot",
+	"Petalite", "Phosgenite", "Pietersite", "Prehnite", "Pyrite",
+	"Quartz", "Rhodochrosite", "Rhodonite", "Rosequartz", "Ruby",
+	"Sapphire", "Scapolite", "Serpentine", "Sphalerite", "Spinel",
+	"Sugilite", "Sunstone", "Tanzanite", "Tigerslye", "Topaz",
+	"Tourmaline", "Turquoise", "Variscite", "Zircon"
+};
+
+String get_random_name() {
+	std::random_device rd;
+	std::mt19937 eng(rd());
+	std::uniform_int_distribution<> distr(0, words.size() - 1);
+	return words[distr(eng)] + words[distr(eng)];
+}
 
 // void Server::peer_worker_func(WorkerThreadContext &ctx);
 // void Server::client_worker_func(WorkerThreadContext &ctx);
@@ -228,11 +259,11 @@ void sync_worker_broadcast(gem::Server &server) {
 
 /**** SERVER IMPLEMENTATION ***************************************************/
 
-void root_handler(gem::Server &, const httplib::Request &req, httplib::Response &resp) {
+void root_handler(gem::Server &server, const httplib::Request &req, httplib::Response &resp) {
 	print_request(req);
 	RootData r;
-	r.nickname = "acd";
-	r.connected_peers = 20;
+	r.nickname = server.nickname;
+	r.connected_peers = server.peer_list;
 	resp.set_content(json(r).dump(), "application/json");
 }
 
@@ -399,7 +430,7 @@ void client_query_set_handler(gem::Server &server, const httplib::Request &req, 
 	in_value.type = get_type_from_json(k.value);
 	in_value.storage = k.value;
 
-	if (!server.store.set(k.key, in_value)) {
+	if (!server.store.merge_and_set(k.key, in_value)) {
 		resp.status = httplib::NotImplemented_501;
 		resp.set_content(
 			err_msg("object storage is not implemented yet"),
@@ -482,6 +513,8 @@ void Server::start() {
 	// client_server.Options("/dump", HANDLER(enable_cors));
 
 	client_server.set_exception_handler(exception_handler);
+
+	log() << "Server nickname is: " << nickname;
 
 	std::thread peer_server_thread([&]{
 		log() << "Starting peer server at http://127.0.0.1:" << peer_port;
