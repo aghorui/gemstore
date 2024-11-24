@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <string>
 #include "common.hpp"
+#include "extendibleHashTable.hpp"
 #include "json.hpp"
 
 namespace gem {
@@ -50,14 +51,16 @@ Value value_from_json(const json &j);
 /**
  * @brief      The values that are present in a store
  */
-union ValueStorage {
-	int64_t i;
-	long double f;
-	void *data;
-	// How will you handle non scalar data types?
-	// - will you define shortarrays in this union?
-	//   eg: `char[sizeof(int64_t)] c4;` ?
-};
+
+typedef xxhash::Value ValueStorage;
+// union ValueStorage {
+// 	int64_t i;
+// 	long double f;
+// 	void *data;
+// 	// How will you handle non scalar data types?
+// 	// - will you define shortarrays in this union?
+// 	//   eg: `char[sizeof(int64_t)] c4;` ?
+// };
 
 struct Value {
 	ValueType type = ValueType::None;
@@ -124,14 +127,15 @@ struct KeyValuePair {
 static inline void to_json(json& j, const KeyValuePair& p) {
 	j = json{
 		{ "key", p.key },
-		{ "value", p.value.storage }
+		//{ "value", p.value.storage }
+		{ "value", json(nullptr)}
 	};
 }
 
 static inline void from_json(const json& j, KeyValuePair& p) {
 	j.at("key").get_to(p.key);
 	p.value.type = get_type_from_json(j.at("value"));
-	j.at("value").get_to(p.value.storage);
+//	j.at("value").get_to(p.value.storage);
 }
 
 struct Store {
@@ -153,15 +157,15 @@ struct Store {
 #ifdef DUMMY_IMPLEMENTATION
 	ValueMap vmap = json::object();
 #else
-	ValueMap vmap;
+    xxhash::ExtendibleHashTable vmap;
 #endif
 
 	bool contains(const Key &u);
 	Value get(const Key &u);
-	Value get_pattern(const Key &u);
+	Value get_pattern(const Key &u); // Not yet
 	bool set(const Key &u, const Value &v);
 	bool del(const Key &u);
-	bool del_pattern(const Key &u);
+	bool del_pattern(const Key &u); // Not yet
 	bool merge_and_set(const Key &u, const Value &v);
 	bool set_merge_attributes(Vector<MergeAttributeEntry> attrs);
 

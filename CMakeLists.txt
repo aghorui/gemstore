@@ -24,6 +24,7 @@ set(LIBSRC
 	"${SRC_ROOT}/networking.cpp"
 	"${SRC_ROOT}/store.cpp"
 	"${SRC_ROOT}/common.cpp"
+	"${SRC_ROOT}/extendibleHashTable.cpp"
 )
 
 add_library(gem ${LIBSRC})

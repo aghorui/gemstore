@@ -10,6 +10,7 @@
 #include <random>
 #include <thread>
 #include "common.hpp"
+#include "extendibleHashTable.hpp"
 #include "httplib.h"
 
 #include "networking.hpp"
@@ -631,7 +632,10 @@ QueryResult Client::get_value(std::string key)  {
 bool Client::set_value(const std::string &key, const Value &value) {
 	KeyValueData k;
 	k.key = key;
-	k.value = value.to_json_value();
+	k.value = value.storage;
+	// json v;
+	// to_json
+	// k.value = v;
 	// log() << "Client Config: " << client.host() << " " << client.port();
 	// log() << "Peer Client Config: " << peer_client.host() << " " << peer_client.port();
 	auto res = client.Post("/set", json(k).dump(), "application/json");

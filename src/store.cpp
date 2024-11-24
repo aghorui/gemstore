@@ -1,6 +1,7 @@
 #include "store.hpp"
 #include <functional>
 #include <mutex>
+#include <extendibleHashTable.hpp>
 
 namespace gem {
 
@@ -221,11 +222,39 @@ bool Store::merge_and_set(const Key &u, const Value &v) {
 	return true;
 }
 
-
-
 #else
 
 // TODO
+//
+
+bool Store::contains(const Key &u) {
+    std::lock_guard<std::mutex> l(vmap_lock);
+    xxhash::Value tmpValue;
+    return vmap.get(u, tmpValue);
+}
+
+bool Store::set(const Key &u, const Value &v) {
+	std::lock_guard<std::mutex> l(vmap_lock);
+	vmap.insert(u, v.storage);
+	return true;
+}
+
+Value Store::get(const Key &u) {
+	std::lock_guard<std::mutex> l(vmap_lock);
+	xxhash::Value tmp;
+	if (vmap.get(u, tmp)) {
+		vmap_lock.unlock();
+		throw KeyNotFoundException(u);
+	}
+
+	Value v;
+	vmap.get(u, tmp);
+	v.type = get_type_from_json(tmp);
+	v.storage = tmp;
+	vmap_lock.unlock();
+	return v;
+}
+
 
 #endif
 

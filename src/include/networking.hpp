@@ -100,6 +100,9 @@ struct Query {
 using QueryResult = Vector<Value>;
 
 #else
+
+using QueryResult = Vector<Value>;
+
 // TODO
 /*
 struct QueryResult {
