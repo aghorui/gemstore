@@ -131,7 +131,7 @@ enum class SyncMode {
                            (((x) == "broadcast") ? SyncMode::BROADCAST : SyncMode::POLL))
 
 static inline void to_json(json& j, const SyncMode& p) {
-	std::cerr << "SYNCMODE VALUE to json: " << SYNCMODE_TO_STR(p) ;
+	//std::cerr << "SYNCMODE VALUE to json: " << SYNCMODE_TO_STR(p) ;
 	if (p == SyncMode::POLL) {
 		j = "poll";
 	} else if (p == SyncMode::BROADCAST) {
@@ -142,7 +142,7 @@ static inline void to_json(json& j, const SyncMode& p) {
 }
 
 static inline void from_json(const json& j, SyncMode& p) {
-	std::cerr << "SYNCMODE VALUE from json: " << j.dump();
+	//std::cerr << "SYNCMODE VALUE from json: " << j.dump();
 	if (j == "poll") {
 		p = SyncMode::POLL;
 	} else if (j == "broadcast") {
@@ -238,7 +238,8 @@ static inline void to_json(json& j, const Config& p) {
 		{ "sync_mode",              p.sync_mode                  },
 		{ "peer_retention",         p.peer_retention             },
 		{ "peers",                  p.peers                      },
-		{ "merge_attributes",       p.merge_attributes           }
+		{ "max_peers",              p.merge_attributes           },
+		{ "merge_attributes",       p.merge_attributes           },
 	};
 }
 
@@ -249,6 +250,7 @@ static inline void from_json(const json& j, Config& p) {
 	j.at("max_client_connections").get_to(p.max_client_connections);
 	j.at("max_concurrency").get_to(p.max_concurrency);
 	j.at("peers").get_to(p.peers);
+	j.at("max_peers").get_to(p.max_peers);
 	j.at("merge_attributes").get_to(p.merge_attributes);
 	j.at("sync_mode").get_to(p.sync_mode);
 }

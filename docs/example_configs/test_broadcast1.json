@@ -3,6 +3,7 @@
     "max_client_connections": 128,
     "max_concurrency": 30,
     "max_server_connections": 20,
+    "max_peers": 10,
     "merge_attributes": [
         { "key": "ul", "attr": "arr_union" }
     ],

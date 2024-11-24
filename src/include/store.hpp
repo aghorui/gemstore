@@ -110,7 +110,7 @@ static inline void from_json(const json& j, Value& v) {
 		for (auto value : j) {
 			json new_value;
 
-			from_json(j, v);
+			from_json(j, new_value);
 			arr->push_back(new_value)
 		}
 		v.storage.data = arr;

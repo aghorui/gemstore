@@ -161,6 +161,7 @@ struct Server {
 	Server(Config &config, Store &store):
 		config(config),
 		store(store),
+		max_peers(config.max_peers),
 		concurrency(config.max_concurrency),
 		peer_list(config.peers.begin(), config.peers.end()),
 		peer_port(config.server_listener_port),

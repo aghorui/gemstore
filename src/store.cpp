@@ -19,21 +19,18 @@ ValueType get_type_from_json(const json &j) {
 bool Store::contains(const Key &u) {
 	std::lock_guard<std::mutex> l(vmap_lock);
 	bool ret = vmap.contains(u);
-	vmap_lock.unlock();
 	return ret;
 }
 
 Value Store::get(const Key &u) {
 	std::lock_guard<std::mutex> l(vmap_lock);
 	if (vmap.count(u) < 1) {
-		vmap_lock.unlock();
 		throw KeyNotFoundException(u);
 	}
 
 	Value v;
 	v.type = get_type_from_json(vmap[u]),
 	v.storage = vmap[u];
-	vmap_lock.unlock();
 	return v;
 }
 

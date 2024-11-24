@@ -119,7 +119,7 @@ struct History {
 // milliseconds
 #define POLL_DELAY 500
 #define BROADCAST_POLL_DELAY 5000
-#define BROADCAST_POLL_THRESHOLD 10 * 1000
+#define BROADCAST_POLL_THRESHOLD (10 * 1000)
 
 void sync_worker_poll(gem::Server &server) {
 	// ping each server
@@ -173,6 +173,8 @@ void sync_worker_poll_broadcast(gem::Server &server) {
 			for (auto &p : server.peer_list) {
 				server.peer_state_lock.lock();
 				uint64_t current_time = get_millisecond_timestamp();
+				// log() << p.to_string() << current_time << " " << server.peers[p].last_pinged << " " << BROADCAST_POLL_THRESHOLD;
+				// log() << p.to_string() << current_time << " " << server.peers[p].last_updated << " " << BROADCAST_POLL_THRESHOLD;
 				if (!(
 						((current_time - server.peers[p].last_pinged) > BROADCAST_POLL_THRESHOLD) &&
 						((current_time - server.peers[p].last_updated) > BROADCAST_POLL_THRESHOLD)
@@ -276,6 +278,7 @@ void sync_worker_broadcast(gem::Server &server) {
 			log() << "Broadcast Error: " << e.what();
 		}
 	}
+	log() << "Done";
 }
 
 /**** SERVER IMPLEMENTATION ***************************************************/
@@ -347,8 +350,9 @@ void sync_post_handler(gem::Server &server, const httplib::Request &req, httplib
 		if (!ok) {
 			resp.status = httplib::Forbidden_403;
 			resp.set_content(err_msg("peer handshake refused"), "application/json");
+			return;
 		}
-		return;
+		log() << "REGISTERED new peer " << p.to_string();
 	}
 
 	bool force_resync = false;
@@ -539,6 +543,14 @@ void Server::start() {
 	client_server.set_exception_handler(exception_handler);
 
 	log() << "Server nickname is: " << nickname;
+
+	peer_server.new_task_queue = [&] {
+		return new httplib::ThreadPool(concurrency);
+	};
+
+	client_server.new_task_queue = [&] {
+		return new httplib::ThreadPool(concurrency);
+	};
 
 	std::thread peer_server_thread([&]{
 		log() << "Starting peer server at http://127.0.0.1:" << peer_port;
