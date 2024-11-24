@@ -10,12 +10,20 @@ Gemstore is an in-development peer-to-peer key-value data store.
 
 ## Prerequisites
 
+### Server and CLI Client
+
 Your system must have GCC 11, Clang 14, or any other equivalent compiler that
 supports C++11.
 
 Your system must also have CMake (>= 3.22) installed.
 
+### Web Client
+
+Your system must have NodeJS and NPM installed.
+
 ## Instructions
+
+### Server and CLI Client
 
 Create a build folder and go inside of it:
 
@@ -39,6 +47,26 @@ make
 This will create two main executables: `client` and `server`. Executables of
 testing programs (`src/tests/*.cpp`) will also be compiled, and put in a
 subdirectory called `tests` in the build folder.
+
+### Web Client
+
+Open a terminal in `frontentd_src/gemstore-client`
+
+```
+cd ./frontend_src/gemstore-client
+```
+
+Install all NPM dependencies:
+
+```
+npm install
+```
+
+Then start the development webserver by doing:
+
+```
+npm run dev
+```
 
 ## Generating `compile_commands.json`
 
@@ -69,3 +97,8 @@ C++ components. These are included directly in the source tree in the
   A C++ header-only HTTP/HTTPS server and client library.
   [License (MIT)](./remote_deps/licenses/LICENSE_yhirose_httplib)
 
+# License
+
+This software, except for the files in `remote_deps/` are licensed under GNU
+Affero General Public License 3.0 Please see the file LICENSE in this folder for
+details.

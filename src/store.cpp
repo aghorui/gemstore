@@ -11,6 +11,7 @@ ValueType get_type_from_json(const json &j) {
 	else if (j.is_number_float())   return ValueType::Float;
 	else if (j.is_string())         return ValueType::String;
 	else if (j.is_array())          return ValueType::Array;
+	else if (j.is_boolean())        return ValueType::Bool;
 	else if (j.is_null())           return ValueType::None;
 	else assert(0 && "Invlaid value type");
 }

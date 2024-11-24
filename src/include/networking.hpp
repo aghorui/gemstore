@@ -153,6 +153,7 @@ struct Server {
 
 	void start();
 	void close();
+	bool register_peer(const PeerInformation &p);
 
 	void handle_client_request();
 	void handle_server_request();
@@ -195,6 +196,7 @@ struct Client {
 	Config peer_get_config();
 
 	bool should_sync();
+	RootData peer_get_server_info();
 	SyncData peer_get_sync_changeset(uint peer_port_outgoing, uint client_port_outgoing);
 	bool peer_send_changeset(SyncData &s);
 

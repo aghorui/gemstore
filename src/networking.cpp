@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -172,17 +173,37 @@ void sync_worker_poll_broadcast(gem::Server &server) {
 			for (auto &p : server.peer_list) {
 				server.peer_state_lock.lock();
 				uint64_t current_time = get_millisecond_timestamp();
-				if (!((current_time - server.peers[p].last_pinged) > BROADCAST_POLL_THRESHOLD &&
-					(current_time - server.peers[p].last_updated) > BROADCAST_POLL_THRESHOLD)) {
+				if (!(
+						((current_time - server.peers[p].last_pinged) > BROADCAST_POLL_THRESHOLD) &&
+						((current_time - server.peers[p].last_updated) > BROADCAST_POLL_THRESHOLD)
+					)) {
 					server.peer_state_lock.unlock();
 					continue;
 				}
+
+				/*bool first_comm = server.peers[p].accessed_once ||
+				                  server.peers[p].last_pinged == 0;*/
+
 				server.peer_state_lock.unlock();
 
 				try {
 					log() << "Timeout expired. Pinging " << p.to_string();
 					Client peer_client(p.address, p.peer_port, p.client_port);
 					//log() << "Pinging " << p.address << ":" << p.peer_port;
+
+					/*if (first_comm &&
+						server.config.peer_retention > 0 &&
+						(int) (server.max_peers - server.peer_list.size()) > 0) {
+						RootData r = peer_client.peer_get_server_info();
+						int retained =
+							std::min(
+								(int) (((float) r.connected_peers.size()) * server.config.peer_retention),
+								(int) (server.max_peers - server.peer_list.size()));
+						if (retained > 0) {
+
+						}
+					}*/
+
 					SyncData s = peer_client.peer_get_sync_changeset(server.peer_port, server.client_port);
 
 					server.peer_state_lock.lock();
@@ -322,8 +343,11 @@ void sync_post_handler(gem::Server &server, const httplib::Request &req, httplib
 	// log() << "Request from " << json(p).dump(4);
 	// log() << "Peer list is " << json(server.peer_list).dump(4);
 	if (server.peer_list.count(p) < 1) {
-		resp.status = httplib::Forbidden_403;
-		resp.set_content(err_msg("not a peer"), "application/json");
+		bool ok = server.register_peer(p);
+		if (!ok) {
+			resp.status = httplib::Forbidden_403;
+			resp.set_content(err_msg("peer handshake refused"), "application/json");
+		}
 		return;
 	}
 
@@ -568,6 +592,16 @@ void Server::close() {
 	client_server.stop();
 }
 
+bool Server::register_peer(const PeerInformation &p) {
+	std::lock_guard<std::mutex> peer_state_guard(peer_state_lock);
+	if (peers.size() >= (unsigned) max_peers) {
+		return false;
+	}
+	peer_list.insert(p);
+	peers[p] = PeerState();
+	return true;
+}
+
 /**** CLIENT IMPLEMENTATION ***************************************************/
 
 QueryResult Client::get_value(std::string key)  {
@@ -627,6 +661,22 @@ Config Client::peer_get_config() {
 	Config c = json::parse(res->body);
 
 	return c;
+}
+
+RootData Client::peer_get_server_info() {
+	auto res = peer_client.Get("/");
+
+	if (!res) {
+		throw ClientQueryError(res);
+	}
+
+	if (res->status != httplib::OK_200) {
+		throw ClientQueryError(res->status);
+	}
+
+	RootData r = json::parse(res->body);
+
+	return r;
 }
 
 SyncData Client::peer_get_sync_changeset(uint peer_port_outgoing, uint client_port_outgoing) {
